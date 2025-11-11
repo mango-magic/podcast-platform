@@ -9,7 +9,11 @@ passport.use(new LinkedInStrategy({
   // LinkedIn now requires OpenID Connect scopes
   // Using the new scopes that are authorized
   scope: ['openid', 'profile', 'email'],
-  state: true
+  state: true,
+  // Force OpenID Connect endpoints
+  authorizationURL: 'https://www.linkedin.com/oauth/v2/authorization',
+  tokenURL: 'https://www.linkedin.com/oauth/v2/accessToken',
+  profileURL: 'https://api.linkedin.com/v2/userinfo'
 }, async (accessToken, refreshToken, profile, done) => {
   try {
     // Handle profile data with better error checking

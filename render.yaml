@@ -34,6 +34,8 @@ services:
         sync: false
       - key: LINKEDIN_CLIENT_SECRET
         sync: false
+      - key: LINKEDIN_CALLBACK_URL
+        value: https://podcast-platform-backend.onrender.com/auth/linkedin/callback
       - key: GEMINI_API_KEY
         value: AIzaSyA3caiS86rgxCnOWrP95WQL0C1PyBKoeoA
 

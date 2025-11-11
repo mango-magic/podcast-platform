@@ -91,6 +91,18 @@ passport.use(new LinkedInStrategy({
                               (profile.photos && profile.photos[0] ? profile.photos[0].value : null) ||
                               profile._json?.picture;
     
+    // Validate required fields
+    if (!email) {
+      console.error('LinkedIn OAuth: Email is required but not provided');
+      return done(new Error('Email is required but not available from LinkedIn. Please ensure your LinkedIn account has an email address.'), null);
+    }
+    
+    if (!name || name === 'LinkedIn User') {
+      console.warn('LinkedIn OAuth: Name not available, using LinkedIn ID');
+      // Use LinkedIn ID as fallback name if name is missing
+      const fallbackName = `LinkedIn User ${linkedinId.substring(0, 8)}`;
+    }
+    
     console.log('Extracted profile data:', {
       linkedinId,
       email: email ? 'present' : 'missing',
@@ -134,49 +146,124 @@ passport.use(new LinkedInStrategy({
       // Continue without inference - user can set manually
     }
     
-    if (!user) {
-      user = await User.create({
-        linkedinId,
-        email,
-        name,
-        profilePictureUrl,
-        accessToken,
-        refreshToken,
-        persona: inferredPersona,
-        vertical: inferredVertical,
-        profileCompleted: !!(inferredPersona && inferredVertical) // Auto-complete if both inferred
-      });
-      console.log(`✅ New user created: ${user.name} (${user.email})`);
-      if (inferredPersona && inferredVertical) {
-        console.log(`  ✓ Auto-detected: ${inferredPersona} in ${inferredVertical}`);
-      }
-    } else {
-      // Update existing user with fresh tokens
-      user.accessToken = accessToken;
-      user.refreshToken = refreshToken;
-      if (email && (!user.email || user.email !== email)) {
-        user.email = email;
-      }
-      if (name && (!user.name || user.name !== name)) {
-        user.name = name;
-      }
-      if (profilePictureUrl) {
-        user.profilePictureUrl = profilePictureUrl;
+    // Use transaction to ensure atomicity and handle race conditions
+    const { sequelize } = require('../models');
+    const transaction = await sequelize.transaction();
+    
+    try {
+      if (!user) {
+        // Check again within transaction to handle race conditions
+        user = await User.findOne({ 
+          where: { linkedinId },
+          transaction 
+        });
+        
+        if (!user) {
+          // Create new user with transaction
+          user = await User.create({
+            linkedinId,
+            email,
+            name,
+            profilePictureUrl,
+            accessToken,
+            refreshToken,
+            persona: inferredPersona,
+            vertical: inferredVertical,
+            profileCompleted: !!(inferredPersona && inferredVertical)
+          }, { transaction });
+          
+          console.log(`✅ New user created: ${user.name} (${user.email})`);
+          if (inferredPersona && inferredVertical) {
+            console.log(`  ✓ Auto-detected: ${inferredPersona} in ${inferredVertical}`);
+          }
+        } else {
+          // User was created by another request, update instead
+          console.log('User found during transaction (race condition handled), updating...');
+          user.accessToken = accessToken;
+          user.refreshToken = refreshToken;
+          if (email && (!user.email || user.email !== email)) {
+            user.email = email;
+          }
+          if (name && (!user.name || user.name !== name)) {
+            user.name = name;
+          }
+          if (profilePictureUrl) {
+            user.profilePictureUrl = profilePictureUrl;
+          }
+          
+          if (!user.persona && inferredPersona) {
+            user.persona = inferredPersona;
+          }
+          if (!user.vertical && inferredVertical) {
+            user.vertical = inferredVertical;
+          }
+          if (!user.profileCompleted && user.persona && user.vertical) {
+            user.profileCompleted = true;
+          }
+          
+          await user.save({ transaction });
+          console.log(`✅ User updated: ${user.name}`);
+        }
+      } else {
+        // Update existing user with transaction
+        user.accessToken = accessToken;
+        user.refreshToken = refreshToken;
+        if (email && (!user.email || user.email !== email)) {
+          user.email = email;
+        }
+        if (name && (!user.name || user.name !== name)) {
+          user.name = name;
+        }
+        if (profilePictureUrl) {
+          user.profilePictureUrl = profilePictureUrl;
+        }
+        
+        // Update persona/vertical if not set and we have inferences
+        if (!user.persona && inferredPersona) {
+          user.persona = inferredPersona;
+        }
+        if (!user.vertical && inferredVertical) {
+          user.vertical = inferredVertical;
+        }
+        if (!user.profileCompleted && user.persona && user.vertical) {
+          user.profileCompleted = true;
+        }
+        
+        await user.save({ transaction });
+        console.log(`✅ User updated: ${user.name}`);
       }
       
-      // Update persona/vertical if not set and we have inferences
-      if (!user.persona && inferredPersona) {
-        user.persona = inferredPersona;
-      }
-      if (!user.vertical && inferredVertical) {
-        user.vertical = inferredVertical;
-      }
-      if (!user.profileCompleted && user.persona && user.vertical) {
-        user.profileCompleted = true;
-      }
+      // Commit transaction
+      await transaction.commit();
+    } catch (dbError) {
+      // Rollback transaction on error
+      await transaction.rollback();
       
-      await user.save();
-      console.log(`✅ User updated: ${user.name}`);
+      // Handle specific database errors
+      if (dbError.name === 'SequelizeUniqueConstraintError') {
+        console.error('Database error: Unique constraint violation', dbError.errors);
+        // Try to find the user that already exists
+        const existingUser = await User.findOne({ where: { linkedinId } });
+        if (existingUser) {
+          console.log('Found existing user after constraint error, using it');
+          user = existingUser;
+          // Update tokens
+          user.accessToken = accessToken;
+          user.refreshToken = refreshToken;
+          await user.save();
+        } else {
+          return done(new Error('Account already exists with this email. Please try logging in.'), null);
+        }
+      } else if (dbError.name === 'SequelizeValidationError') {
+        console.error('Database validation error:', dbError.errors);
+        return done(new Error(`Invalid user data: ${dbError.errors.map(e => e.message).join(', ')}`), null);
+      } else if (dbError.name === 'SequelizeConnectionError') {
+        console.error('Database connection error:', dbError.message);
+        return done(new Error('Database connection failed. Please try again in a moment.'), null);
+      } else {
+        // Re-throw unknown errors
+        throw dbError;
+      }
     }
     
     return done(null, user);

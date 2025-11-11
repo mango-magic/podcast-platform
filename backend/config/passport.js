@@ -97,16 +97,19 @@ passport.use(new LinkedInStrategy({
       return done(new Error('Email is required but not available from LinkedIn. Please ensure your LinkedIn account has an email address.'), null);
     }
     
-    if (!name || name === 'LinkedIn User') {
-      console.warn('LinkedIn OAuth: Name not available, using LinkedIn ID');
-      // Use LinkedIn ID as fallback name if name is missing
-      const fallbackName = `LinkedIn User ${linkedinId.substring(0, 8)}`;
+    // Ensure we have a valid name
+    const finalName = (!name || name === 'LinkedIn User') 
+      ? `LinkedIn User ${linkedinId.substring(0, 8)}`
+      : name;
+    
+    if (finalName !== name) {
+      console.warn('LinkedIn OAuth: Name not available, using LinkedIn ID as fallback');
     }
     
     console.log('Extracted profile data:', {
       linkedinId,
       email: email ? 'present' : 'missing',
-      name,
+      name: finalName,
       profilePictureUrl: profilePictureUrl ? 'present' : 'missing'
     });
 
@@ -163,7 +166,7 @@ passport.use(new LinkedInStrategy({
           user = await User.create({
             linkedinId,
             email,
-            name,
+            name: finalName,
             profilePictureUrl,
             accessToken,
             refreshToken,
@@ -184,8 +187,8 @@ passport.use(new LinkedInStrategy({
           if (email && (!user.email || user.email !== email)) {
             user.email = email;
           }
-          if (name && (!user.name || user.name !== name)) {
-            user.name = name;
+          if (finalName && (!user.name || user.name !== finalName)) {
+            user.name = finalName;
           }
           if (profilePictureUrl) {
             user.profilePictureUrl = profilePictureUrl;

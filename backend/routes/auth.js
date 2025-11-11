@@ -15,12 +15,21 @@ router.get('/linkedin', (req, res) => {
   // Store state in session for verification
   req.session.oauthState = state;
   
-  // Construct LinkedIn OAuth URL with OpenID Connect scopes
-  const scope = 'openid profile email';
-  const authURL = `https://www.linkedin.com/oauth/v2/authorization?response_type=code&client_id=${clientID}&redirect_uri=${encodeURIComponent(callbackURL)}&state=${state}&scope=${encodeURIComponent(scope)}`;
-  
-  console.log('LinkedIn OAuth URL:', authURL);
-  res.redirect(authURL);
+  // Save session before redirect (important for session persistence)
+  req.session.save((err) => {
+    if (err) {
+      console.error('Session save error:', err);
+      return res.status(500).json({ error: 'Failed to initialize OAuth' });
+    }
+    
+    // Construct LinkedIn OAuth URL with OpenID Connect scopes
+    const scope = 'openid profile email';
+    const authURL = `https://www.linkedin.com/oauth/v2/authorization?response_type=code&client_id=${clientID}&redirect_uri=${encodeURIComponent(callbackURL)}&state=${state}&scope=${encodeURIComponent(scope)}`;
+    
+    console.log('LinkedIn OAuth URL:', authURL);
+    console.log('State stored in session:', state.substring(0, 8) + '...');
+    res.redirect(authURL);
+  });
 });
 
 // LinkedIn OAuth callback

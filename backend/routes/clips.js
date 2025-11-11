@@ -1,0 +1,199 @@
+const express = require('express');
+const { Clip, Episode, Podcast } = require('../models');
+const authMiddleware = require('../middleware/auth');
+const router = express.Router();
+
+// All routes require authentication
+router.use(authMiddleware);
+
+// Get all clips (optionally filtered by episode)
+router.get('/', async (req, res) => {
+  try {
+    const where = {};
+    
+    if (req.query.episodeId) {
+      // Verify episode belongs to user
+      const episode = await Episode.findByPk(req.query.episodeId, {
+        include: [
+          { 
+            model: Podcast, 
+            as: 'podcast',
+            where: { userId: req.user.id },
+            required: true
+          }
+        ]
+      });
+      
+      if (!episode) {
+        return res.status(404).json({ error: 'Episode not found' });
+      }
+      
+      where.episodeId = req.query.episodeId;
+    }
+    
+    const clips = await Clip.findAll({
+      where,
+      include: [
+        { model: Episode, as: 'episode', attributes: ['id', 'title'] }
+      ],
+      order: [['createdAt', 'DESC']]
+    });
+    
+    res.json(clips);
+  } catch (error) {
+    console.error('Error fetching clips:', error);
+    res.status(500).json({ error: 'Failed to fetch clips' });
+  }
+});
+
+// Get single clip
+router.get('/:id', async (req, res) => {
+  try {
+    const clip = await Clip.findByPk(req.params.id, {
+      include: [
+        { 
+          model: Episode, 
+          as: 'episode',
+          include: [
+            { 
+              model: Podcast, 
+              as: 'podcast',
+              where: { userId: req.user.id },
+              required: true
+            }
+          ]
+        }
+      ]
+    });
+    
+    if (!clip) {
+      return res.status(404).json({ error: 'Clip not found' });
+    }
+    
+    res.json(clip);
+  } catch (error) {
+    console.error('Error fetching clip:', error);
+    res.status(500).json({ error: 'Failed to fetch clip' });
+  }
+});
+
+// Create new clip
+router.post('/', async (req, res) => {
+  try {
+    const { episodeId, title, startTime, duration, videoUrl, audioUrl, platform } = req.body;
+    
+    if (!episodeId || !title || startTime === undefined || !duration) {
+      return res.status(400).json({ error: 'Episode ID, title, start time, and duration are required' });
+    }
+    
+    // Verify episode belongs to user
+    const episode = await Episode.findByPk(episodeId, {
+      include: [
+        { 
+          model: Podcast, 
+          as: 'podcast',
+          where: { userId: req.user.id },
+          required: true
+        }
+      ]
+    });
+    
+    if (!episode) {
+      return res.status(404).json({ error: 'Episode not found' });
+    }
+    
+    const clip = await Clip.create({
+      episodeId,
+      title,
+      startTime,
+      duration,
+      videoUrl,
+      audioUrl,
+      platform: platform || 'general',
+      status: 'draft'
+    });
+    
+    res.status(201).json(clip);
+  } catch (error) {
+    console.error('Error creating clip:', error);
+    res.status(500).json({ error: 'Failed to create clip' });
+  }
+});
+
+// Update clip
+router.put('/:id', async (req, res) => {
+  try {
+    const clip = await Clip.findByPk(req.params.id, {
+      include: [
+        { 
+          model: Episode, 
+          as: 'episode',
+          include: [
+            { 
+              model: Podcast, 
+              as: 'podcast',
+              where: { userId: req.user.id },
+              required: true
+            }
+          ]
+        }
+      ]
+    });
+    
+    if (!clip) {
+      return res.status(404).json({ error: 'Clip not found' });
+    }
+    
+    const { title, startTime, duration, videoUrl, audioUrl, platform, status } = req.body;
+    
+    await clip.update({
+      title: title || clip.title,
+      startTime: startTime !== undefined ? startTime : clip.startTime,
+      duration: duration !== undefined ? duration : clip.duration,
+      videoUrl: videoUrl !== undefined ? videoUrl : clip.videoUrl,
+      audioUrl: audioUrl !== undefined ? audioUrl : clip.audioUrl,
+      platform: platform || clip.platform,
+      status: status || clip.status
+    });
+    
+    res.json(clip);
+  } catch (error) {
+    console.error('Error updating clip:', error);
+    res.status(500).json({ error: 'Failed to update clip' });
+  }
+});
+
+// Delete clip
+router.delete('/:id', async (req, res) => {
+  try {
+    const clip = await Clip.findByPk(req.params.id, {
+      include: [
+        { 
+          model: Episode, 
+          as: 'episode',
+          include: [
+            { 
+              model: Podcast, 
+              as: 'podcast',
+              where: { userId: req.user.id },
+              required: true
+            }
+          ]
+        }
+      ]
+    });
+    
+    if (!clip) {
+      return res.status(404).json({ error: 'Clip not found' });
+    }
+    
+    await clip.destroy();
+    res.json({ message: 'Clip deleted successfully' });
+  } catch (error) {
+    console.error('Error deleting clip:', error);
+    res.status(500).json({ error: 'Failed to delete clip' });
+  }
+});
+
+module.exports = router;
+

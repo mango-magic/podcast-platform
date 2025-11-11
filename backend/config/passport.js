@@ -1,23 +1,56 @@
 const passport = require('passport');
 const LinkedInStrategy = require('passport-linkedin-oauth2').Strategy;
 const { User } = require('../models');
+const axios = require('axios');
+const jwt = require('jsonwebtoken');
 
 passport.use(new LinkedInStrategy({
   clientID: process.env.LINKEDIN_CLIENT_ID,
   clientSecret: process.env.LINKEDIN_CLIENT_SECRET,
   callbackURL: process.env.LINKEDIN_CALLBACK_URL || '/auth/linkedin/callback',
   // LinkedIn now requires OpenID Connect scopes
-  // Using the new scopes that are authorized
   scope: ['openid', 'profile', 'email'],
   state: false, // We handle state manually in the route
   // Force OpenID Connect endpoints
   authorizationURL: 'https://www.linkedin.com/oauth/v2/authorization',
   tokenURL: 'https://www.linkedin.com/oauth/v2/accessToken',
   profileURL: 'https://api.linkedin.com/v2/userinfo',
-  // Skip user profile fetch if needed (we'll handle it manually)
-  skipUserProfile: false
+  skipUserProfile: false // Let Passport try, but we'll handle failures gracefully
 }, async (accessToken, refreshToken, profile, done) => {
   try {
+    console.log('=== Passport Callback ===');
+    console.log('Access token received:', accessToken ? 'present' : 'missing');
+    console.log('Refresh token received:', refreshToken ? 'present' : 'missing');
+    console.log('Profile received:', profile ? JSON.stringify(profile, null, 2) : 'missing');
+    
+    // If profile fetch failed, profile might be null, undefined, or have an error
+    // Try to fetch profile manually using access token
+    if (!profile || (!profile.id && !profile.sub)) {
+      console.log('Profile not available from Passport, fetching manually...');
+      try {
+        const profileResponse = await axios.get('https://api.linkedin.com/v2/userinfo', {
+          headers: {
+            'Authorization': `Bearer ${accessToken}`,
+            'Content-Type': 'application/json'
+          },
+          timeout: 10000
+        });
+        
+        console.log('✅ Manually fetched profile:', JSON.stringify(profileResponse.data, null, 2));
+        // Use manually fetched profile data
+        profile = {
+          ...profileResponse.data,
+          _json: profileResponse.data
+        };
+      } catch (fetchError) {
+        console.error('❌ Failed to fetch profile manually:', fetchError.message);
+        console.error('Error details:', fetchError.response?.data || fetchError.message);
+        
+        // If manual fetch fails, return error - we need profile data
+        return done(new Error(`Failed to fetch user profile: ${fetchError.message}`), null);
+      }
+    }
+    
     // Log full profile for debugging
     console.log('LinkedIn profile received:', JSON.stringify(profile, null, 2));
     
@@ -102,7 +135,7 @@ passport.use(new LinkedInStrategy({
         vertical: inferredVertical,
         profileCompleted: !!(inferredPersona && inferredVertical) // Auto-complete if both inferred
       });
-      console.log(`New user created: ${user.name} (${user.email})`);
+      console.log(`✅ New user created: ${user.name} (${user.email})`);
       if (inferredPersona && inferredVertical) {
         console.log(`  ✓ Auto-detected: ${inferredPersona} in ${inferredVertical}`);
       }
@@ -132,12 +165,12 @@ passport.use(new LinkedInStrategy({
       }
       
       await user.save();
-      console.log(`User updated: ${user.name}`);
+      console.log(`✅ User updated: ${user.name}`);
     }
     
     return done(null, user);
   } catch (error) {
-    console.error('LinkedIn OAuth Error:', error);
+    console.error('❌ LinkedIn OAuth Error:', error);
     console.error('Error stack:', error.stack);
     return done(error, null);
   }
@@ -157,4 +190,3 @@ passport.deserializeUser(async (id, done) => {
 });
 
 module.exports = passport;
-

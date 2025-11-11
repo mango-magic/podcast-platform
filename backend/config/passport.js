@@ -6,10 +6,9 @@ passport.use(new LinkedInStrategy({
   clientID: process.env.LINKEDIN_CLIENT_ID,
   clientSecret: process.env.LINKEDIN_CLIENT_SECRET,
   callbackURL: process.env.LINKEDIN_CALLBACK_URL || '/auth/linkedin/callback',
-  // Note: LinkedIn has deprecated r_liteprofile and r_emailaddress
-  // If these don't work, you may need to migrate to OpenID Connect
-  // For now, using the scopes that passport-linkedin-oauth2 supports
-  scope: ['r_liteprofile', 'r_emailaddress'],
+  // LinkedIn now requires OpenID Connect scopes
+  // Using the new scopes that are authorized
+  scope: ['openid', 'profile', 'email'],
   state: true
 }, async (accessToken, refreshToken, profile, done) => {
   try {
@@ -24,7 +23,35 @@ passport.use(new LinkedInStrategy({
     const name = profile.displayName || 'LinkedIn User';
     const profilePictureUrl = profile.photos && profile.photos[0] ? profile.photos[0].value : null;
 
+    // Import AI inference service
+    const { inferDemographics } = require('../services/aiInference');
+    
     let user = await User.findOne({ where: { linkedinId } });
+    
+    // Try to infer persona and vertical from LinkedIn profile
+    let inferredPersona = null;
+    let inferredVertical = null;
+    
+    try {
+      const demographics = await inferDemographics(accessToken, {
+        headline: profile.headline,
+        title: profile.headline,
+        company: profile.company,
+        industry: profile.industry
+      });
+      
+      inferredPersona = demographics.persona;
+      inferredVertical = demographics.vertical;
+      
+      console.log(`AI Inference for ${name}:`, {
+        persona: inferredPersona,
+        vertical: inferredVertical,
+        confidence: demographics.confidence
+      });
+    } catch (error) {
+      console.error('AI inference error (non-blocking):', error.message);
+      // Continue without inference - user can set manually
+    }
     
     if (!user) {
       user = await User.create({
@@ -33,9 +60,15 @@ passport.use(new LinkedInStrategy({
         name,
         profilePictureUrl,
         accessToken,
-        refreshToken
+        refreshToken,
+        persona: inferredPersona,
+        vertical: inferredVertical,
+        profileCompleted: !!(inferredPersona && inferredVertical) // Auto-complete if both inferred
       });
       console.log(`New user created: ${user.name} (${user.email})`);
+      if (inferredPersona && inferredVertical) {
+        console.log(`  ✓ Auto-detected: ${inferredPersona} in ${inferredVertical}`);
+      }
     } else {
       // Update existing user with fresh tokens
       user.accessToken = accessToken;
@@ -49,6 +82,18 @@ passport.use(new LinkedInStrategy({
       if (profilePictureUrl) {
         user.profilePictureUrl = profilePictureUrl;
       }
+      
+      // Update persona/vertical if not set and we have inferences
+      if (!user.persona && inferredPersona) {
+        user.persona = inferredPersona;
+      }
+      if (!user.vertical && inferredVertical) {
+        user.vertical = inferredVertical;
+      }
+      if (!user.profileCompleted && user.persona && user.vertical) {
+        user.profileCompleted = true;
+      }
+      
       await user.save();
       console.log(`User updated: ${user.name}`);
     }

@@ -60,6 +60,27 @@ const User = sequelize.define('User', {
   refreshToken: {
     type: Sequelize.TEXT,
     allowNull: true
+  },
+  persona: {
+    type: Sequelize.ENUM(
+      'CISO', 'CRO', 'CFO', 'CHRO', 'COO', 'CMO', 'CTO', 
+      'VP Supply Chain', 'CSO', 'General Counsel'
+    ),
+    allowNull: true,
+    comment: 'User persona/role'
+  },
+  vertical: {
+    type: Sequelize.ENUM(
+      'SaaS', 'Banking', 'Insurance', 'Healthcare Providers', 
+      'Pharma', 'CPG', 'Automotive', 'eCommerce', 'Logistics', 'Renewables'
+    ),
+    allowNull: true,
+    comment: 'Industry vertical'
+  },
+  profileCompleted: {
+    type: Sequelize.BOOLEAN,
+    defaultValue: false,
+    comment: 'Whether user has completed onboarding'
   }
 }, {
   timestamps: true,

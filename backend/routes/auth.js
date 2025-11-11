@@ -25,9 +25,78 @@ router.get('/linkedin', (req, res) => {
 
 // LinkedIn OAuth callback
 router.get('/linkedin/callback',
-  passport.authenticate('linkedin', { session: false }),
+  (req, res, next) => {
+    // Log callback attempt for debugging
+    console.log('=== LinkedIn OAuth Callback ===');
+    console.log('Query params:', {
+      code: req.query.code ? 'present' : 'missing',
+      state: req.query.state ? 'present' : 'missing',
+      error: req.query.error,
+      error_description: req.query.error_description
+    });
+    console.log('Headers:', {
+      'user-agent': req.headers['user-agent'],
+      'referer': req.headers['referer']
+    });
+    
+    // Check for OAuth errors from LinkedIn
+    if (req.query.error) {
+      console.error('LinkedIn OAuth error:', {
+        error: req.query.error,
+        description: req.query.error_description
+      });
+      
+      let frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3001';
+      if (process.env.NODE_ENV === 'production' && !frontendUrl.startsWith('http')) {
+        frontendUrl = `https://${frontendUrl}`;
+      }
+      if (!process.env.FRONTEND_URL && process.env.NODE_ENV === 'production') {
+        frontendUrl = 'https://podcast-platform-frontend.onrender.com';
+      }
+      
+      return res.redirect(`${frontendUrl}/auth/error?message=${encodeURIComponent(req.query.error_description || req.query.error)}`);
+    }
+    
+    next();
+  },
+  (req, res, next) => {
+    // Custom Passport authentication with error handling
+    passport.authenticate('linkedin', { session: false }, (err, user, info) => {
+      if (err) {
+        console.error('Passport authentication error:', err);
+        let frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3001';
+        if (process.env.NODE_ENV === 'production' && !frontendUrl.startsWith('http')) {
+          frontendUrl = `https://${frontendUrl}`;
+        }
+        if (!process.env.FRONTEND_URL && process.env.NODE_ENV === 'production') {
+          frontendUrl = 'https://podcast-platform-frontend.onrender.com';
+        }
+        return res.redirect(`${frontendUrl}/auth/error?message=${encodeURIComponent(err.message || 'Authentication failed')}`);
+      }
+      
+      if (!user) {
+        console.error('Passport authentication failed - no user:', info);
+        let frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3001';
+        if (process.env.NODE_ENV === 'production' && !frontendUrl.startsWith('http')) {
+          frontendUrl = `https://${frontendUrl}`;
+        }
+        if (!process.env.FRONTEND_URL && process.env.NODE_ENV === 'production') {
+          frontendUrl = 'https://podcast-platform-frontend.onrender.com';
+        }
+        return res.redirect(`${frontendUrl}/auth/error?message=${encodeURIComponent(info?.message || 'Authentication failed')}`);
+      }
+      
+      // Attach user to request and continue
+      req.user = user;
+      next();
+    })(req, res, next);
+  },
   (req, res) => {
     try {
+      if (!req.user) {
+        throw new Error('User not found after authentication');
+      }
+      
       const token = jwt.sign(
         { userId: req.user.id },
         process.env.JWT_SECRET,
@@ -47,7 +116,7 @@ router.get('/linkedin/callback',
         frontendUrl = 'https://podcast-platform-frontend.onrender.com';
       }
       
-      console.log(`Redirecting to frontend: ${frontendUrl}/auth/callback`);
+      console.log(`✅ OAuth success! Redirecting to frontend: ${frontendUrl}/auth/callback`);
       res.redirect(`${frontendUrl}/auth/callback?token=${token}`);
     } catch (error) {
       console.error('Token generation error:', error);
@@ -61,10 +130,26 @@ router.get('/linkedin/callback',
         frontendUrl = 'https://podcast-platform-frontend.onrender.com';
       }
       
-      res.redirect(`${frontendUrl}/auth/error`);
+      res.redirect(`${frontendUrl}/auth/error?message=${encodeURIComponent(error.message)}`);
     }
   }
 );
+
+// Error handler for OAuth failures
+router.get('/linkedin/error', (req, res) => {
+  console.error('OAuth error endpoint hit:', req.query);
+  
+  let frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3001';
+  if (process.env.NODE_ENV === 'production' && !frontendUrl.startsWith('http')) {
+    frontendUrl = `https://${frontendUrl}`;
+  }
+  if (!process.env.FRONTEND_URL && process.env.NODE_ENV === 'production') {
+    frontendUrl = 'https://podcast-platform-frontend.onrender.com';
+  }
+  
+  const errorMessage = req.query.message || 'Authentication failed';
+  res.redirect(`${frontendUrl}/auth/error?message=${encodeURIComponent(errorMessage)}`);
+});
 
 // Get current user
 router.get('/me', async (req, res) => {

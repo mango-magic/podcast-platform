@@ -13,19 +13,46 @@ passport.use(new LinkedInStrategy({
   // Force OpenID Connect endpoints
   authorizationURL: 'https://www.linkedin.com/oauth/v2/authorization',
   tokenURL: 'https://www.linkedin.com/oauth/v2/accessToken',
-  profileURL: 'https://api.linkedin.com/v2/userinfo'
+  profileURL: 'https://api.linkedin.com/v2/userinfo',
+  // Skip user profile fetch if needed (we'll handle it manually)
+  skipUserProfile: false
 }, async (accessToken, refreshToken, profile, done) => {
   try {
-    // Handle profile data with better error checking
-    const linkedinId = profile.id;
+    // Log full profile for debugging
+    console.log('LinkedIn profile received:', JSON.stringify(profile, null, 2));
+    
+    // Handle OpenID Connect profile format (different from old LinkedIn API)
+    // OpenID Connect uses: sub, name, email, picture
+    // Old API uses: id, displayName, emails[0].value, photos[0].value
+    const linkedinId = profile.id || profile.sub || profile._json?.sub;
     if (!linkedinId) {
       console.error('LinkedIn OAuth: No user ID found in profile', JSON.stringify(profile, null, 2));
       return done(new Error('Unable to retrieve user information from LinkedIn'), null);
     }
 
-    const email = profile.emails && profile.emails[0] ? profile.emails[0].value : null;
-    const name = profile.displayName || 'LinkedIn User';
-    const profilePictureUrl = profile.photos && profile.photos[0] ? profile.photos[0].value : null;
+    // Handle email - OpenID Connect has it directly, old API has it in emails array
+    const email = profile.email || 
+                  (profile.emails && profile.emails[0] ? profile.emails[0].value : null) ||
+                  (profile._json?.email);
+    
+    // Handle name - OpenID Connect uses 'name', old API uses 'displayName'
+    const name = profile.name || 
+                 profile.displayName || 
+                 profile._json?.name ||
+                 `${profile.given_name || ''} ${profile.family_name || ''}`.trim() ||
+                 'LinkedIn User';
+    
+    // Handle profile picture - OpenID Connect uses 'picture', old API uses 'photos[0].value'
+    const profilePictureUrl = profile.picture || 
+                              (profile.photos && profile.photos[0] ? profile.photos[0].value : null) ||
+                              profile._json?.picture;
+    
+    console.log('Extracted profile data:', {
+      linkedinId,
+      email: email ? 'present' : 'missing',
+      name,
+      profilePictureUrl: profilePictureUrl ? 'present' : 'missing'
+    });
 
     // Import AI inference service
     const { inferDemographics } = require('../services/aiInference');
@@ -37,11 +64,17 @@ passport.use(new LinkedInStrategy({
     let inferredVertical = null;
     
     try {
+      // Extract additional profile fields for AI inference
+      const headline = profile.headline || profile._json?.headline || profile._json?.tagline;
+      const title = headline || profile.title || profile._json?.title;
+      const company = profile.company || profile._json?.company || profile._json?.companyName;
+      const industry = profile.industry || profile._json?.industry;
+      
       const demographics = await inferDemographics(accessToken, {
-        headline: profile.headline,
-        title: profile.headline,
-        company: profile.company,
-        industry: profile.industry
+        headline,
+        title,
+        company,
+        industry
       });
       
       inferredPersona = demographics.persona;

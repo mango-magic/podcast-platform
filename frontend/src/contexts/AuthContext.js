@@ -48,8 +48,12 @@ export const AuthProvider = ({ children }) => {
     getCurrentUser().then(setUser).catch(console.error);
   };
 
+  const updateUser = (userData) => {
+    setUser(userData);
+  };
+
   return (
-    <AuthContext.Provider value={{ user, loading, login, logout, handleAuthCallback }}>
+    <AuthContext.Provider value={{ user, loading, login, logout, handleAuthCallback, updateUser }}>
       {children}
     </AuthContext.Provider>
   );

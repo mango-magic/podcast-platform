@@ -1,8 +1,7 @@
 const passport = require('passport');
 const LinkedInStrategy = require('passport-linkedin-oauth2').Strategy;
 const { User } = require('../models');
-const axios = require('axios');
-const jwt = require('jsonwebtoken');
+const { fetchLinkedInProfileWithRetry, extractProfileFromIdToken } = require('../utils/linkedinAuth');
 
 passport.use(new LinkedInStrategy({
   clientID: process.env.LINKEDIN_CLIENT_ID,
@@ -28,28 +27,39 @@ passport.use(new LinkedInStrategy({
     let profile;
     
     try {
-      const profileResponse = await axios.get('https://api.linkedin.com/v2/userinfo', {
-        headers: {
-          'Authorization': `Bearer ${accessToken}`,
-          'Content-Type': 'application/json'
-        },
-        timeout: 10000
-      });
+      // Try fetching profile with retry mechanism
+      const profileData = await fetchLinkedInProfileWithRetry(accessToken);
       
-      console.log('✅ Successfully fetched profile:', JSON.stringify(profileResponse.data, null, 2));
+      console.log('✅ Successfully fetched profile:', JSON.stringify(profileData, null, 2));
       // Format profile to match Passport's expected structure
       profile = {
-        ...profileResponse.data,
-        id: profileResponse.data.sub, // Passport expects 'id'
-        _json: profileResponse.data
+        ...profileData,
+        id: profileData.sub, // Passport expects 'id'
+        _json: profileData
       };
     } catch (fetchError) {
-      console.error('❌ Failed to fetch profile from LinkedIn:', fetchError.message);
+      console.error('❌ Failed to fetch profile from LinkedIn after retries:', fetchError.message);
       console.error('Error status:', fetchError.response?.status);
       console.error('Error data:', fetchError.response?.data || fetchError.message);
       
-      // If manual fetch fails, return error - we need profile data
-      return done(new Error(`Failed to fetch user profile: ${fetchError.response?.data?.message || fetchError.message}`), null);
+      // Fallback: Try to extract profile from ID token
+      console.log('Attempting fallback: extracting profile from ID token...');
+      const idTokenProfile = extractProfileFromIdToken(params);
+      
+      if (idTokenProfile && idTokenProfile.sub) {
+        console.log('✅ Using profile from ID token as fallback');
+        profile = {
+          ...idTokenProfile,
+          id: idTokenProfile.sub,
+          _json: idTokenProfile
+        };
+      } else {
+        // Both methods failed - return error
+        const errorMessage = fetchError.response?.data?.message || 
+                           fetchError.message || 
+                           'Failed to retrieve user information from LinkedIn';
+        return done(new Error(errorMessage), null);
+      }
     }
     
     // Log full profile for debugging

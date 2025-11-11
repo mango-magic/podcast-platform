@@ -63,6 +63,67 @@ app.get('/health', (req, res) => {
   });
 });
 
+// LinkedIn connectivity check
+app.get('/health/linkedin', async (req, res) => {
+  try {
+    const axios = require('axios');
+    
+    // Check if LinkedIn OAuth endpoints are reachable
+    const checks = {
+      authorization: false,
+      token: false,
+      userinfo: false
+    };
+    
+    try {
+      // Check authorization endpoint (should return 400 without params, but endpoint exists)
+      await axios.get('https://www.linkedin.com/oauth/v2/authorization', {
+        timeout: 5000,
+        validateStatus: () => true // Accept any status
+      });
+      checks.authorization = true;
+    } catch (e) {
+      checks.authorization = false;
+    }
+    
+    try {
+      // Check token endpoint (should return 400 without params)
+      await axios.post('https://www.linkedin.com/oauth/v2/accessToken', null, {
+        timeout: 5000,
+        validateStatus: () => true
+      });
+      checks.token = true;
+    } catch (e) {
+      checks.token = false;
+    }
+    
+    try {
+      // Check userinfo endpoint (will fail without auth, but endpoint exists)
+      await axios.get('https://api.linkedin.com/v2/userinfo', {
+        timeout: 5000,
+        validateStatus: () => true
+      });
+      checks.userinfo = true;
+    } catch (e) {
+      checks.userinfo = false;
+    }
+    
+    const allHealthy = Object.values(checks).every(v => v === true);
+    
+    res.status(allHealthy ? 200 : 503).json({
+      status: allHealthy ? 'ok' : 'degraded',
+      linkedin: checks,
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    res.status(503).json({
+      status: 'error',
+      error: error.message,
+      timestamp: new Date().toISOString()
+    });
+  }
+});
+
 // API Routes
 app.use('/auth', authRoutes);
 app.use('/api/podcasts', podcastRoutes);

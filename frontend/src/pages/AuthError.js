@@ -53,13 +53,23 @@ function AuthCallback() {
               <Alert severity="error" sx={{ mb: 3 }}>
                 {error}
               </Alert>
-              <Button
-                variant="contained"
-                onClick={() => navigate('/')}
-                sx={{ mt: 2 }}
-              >
-                Return to Home
-              </Button>
+              <Box sx={{ display: 'flex', gap: 2, justifyContent: 'center', mt: 3 }}>
+                <Button
+                  variant="outlined"
+                  onClick={() => navigate('/')}
+                >
+                  Return to Home
+                </Button>
+                <Button
+                  variant="contained"
+                  onClick={() => {
+                    const apiUrl = process.env.REACT_APP_API_URL || 'http://localhost:3000';
+                    window.location.href = `${apiUrl}/auth/linkedin`;
+                  }}
+                >
+                  Try Again
+                </Button>
+              </Box>
             </Box>
           </Fade>
         </Box>

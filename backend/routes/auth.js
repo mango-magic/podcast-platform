@@ -34,6 +34,7 @@ router.get('/linkedin/callback',
       error: req.query.error,
       error_description: req.query.error_description
     });
+    console.log('Session state:', req.session.oauthState ? 'present' : 'missing');
     console.log('Headers:', {
       'user-agent': req.headers['user-agent'],
       'referer': req.headers['referer']
@@ -56,6 +57,48 @@ router.get('/linkedin/callback',
       
       return res.redirect(`${frontendUrl}/auth/error?message=${encodeURIComponent(req.query.error_description || req.query.error)}`);
     }
+    
+    // Verify state parameter (CSRF protection)
+    const receivedState = req.query.state;
+    const storedState = req.session.oauthState;
+    
+    if (!receivedState || !storedState) {
+      console.error('State verification failed:', {
+        received: receivedState ? 'present' : 'missing',
+        stored: storedState ? 'present' : 'missing'
+      });
+      
+      let frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3001';
+      if (process.env.NODE_ENV === 'production' && !frontendUrl.startsWith('http')) {
+        frontendUrl = `https://${frontendUrl}`;
+      }
+      if (!process.env.FRONTEND_URL && process.env.NODE_ENV === 'production') {
+        frontendUrl = 'https://podcast-platform-frontend.onrender.com';
+      }
+      
+      return res.redirect(`${frontendUrl}/auth/error?message=${encodeURIComponent('Security verification failed. Please try logging in again.')}`);
+    }
+    
+    if (receivedState !== storedState) {
+      console.error('State mismatch:', {
+        received: receivedState,
+        stored: storedState
+      });
+      
+      let frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3001';
+      if (process.env.NODE_ENV === 'production' && !frontendUrl.startsWith('http')) {
+        frontendUrl = `https://${frontendUrl}`;
+      }
+      if (!process.env.FRONTEND_URL && process.env.NODE_ENV === 'production') {
+        frontendUrl = 'https://podcast-platform-frontend.onrender.com';
+      }
+      
+      return res.redirect(`${frontendUrl}/auth/error?message=${encodeURIComponent('Security verification failed. Please try logging in again.')}`);
+    }
+    
+    // State verified - clear it from session
+    delete req.session.oauthState;
+    console.log('✅ State verified successfully');
     
     next();
   },

@@ -32,12 +32,14 @@ app.use(express.urlencoded({ extended: true }));
 app.use(session({
   secret: process.env.JWT_SECRET || 'your-secret-key',
   resave: false,
-  saveUninitialized: false,
+  saveUninitialized: true, // Set to true to allow storing state before user is authenticated
   cookie: {
-    secure: process.env.NODE_ENV === 'production',
+    secure: process.env.NODE_ENV === 'production', // HTTPS only in production
     httpOnly: true,
-    maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
-  }
+    maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+    sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax' // Allow cross-site for OAuth redirects
+  },
+  name: 'podcast-platform.sid' // Custom session name
 }));
 
 // Passport middleware

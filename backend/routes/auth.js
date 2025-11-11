@@ -7,7 +7,40 @@ const router = express.Router();
 require('../config/passport');
 
 // Initiate LinkedIn OAuth - Manual URL construction to ensure OpenID Connect scopes
-router.get('/linkedin', (req, res) => {
+router.get('/linkedin', async (req, res) => {
+  // Check if user already has a valid JWT token (from query param or cookie)
+  const tokenFromQuery = req.query.token;
+  const authHeader = req.headers.authorization;
+  const token = tokenFromQuery || (authHeader && authHeader.startsWith('Bearer ') ? authHeader.split(' ')[1] : null);
+  
+  if (token) {
+    try {
+      const decoded = jwt.verify(token, process.env.JWT_SECRET);
+      const user = await User.findByPk(decoded.userId);
+      
+      if (user) {
+        console.log('✅ User already authenticated:', user.email);
+        
+        // User already has valid session - redirect to frontend with token
+        let frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3001';
+        if (process.env.NODE_ENV === 'production' && !frontendUrl.startsWith('http')) {
+          frontendUrl = `https://${frontendUrl}`;
+        }
+        if (!process.env.FRONTEND_URL && process.env.NODE_ENV === 'production') {
+          frontendUrl = 'https://podcast-platform-frontend.onrender.com';
+        }
+        
+        return res.redirect(`${frontendUrl}/auth/callback?token=${token}`);
+      }
+    } catch (error) {
+      // Token invalid or expired - proceed with OAuth
+      console.log('Token invalid or expired, proceeding with OAuth:', error.message);
+    }
+  }
+  
+  // Check if user has a valid refresh token stored (optional - for future enhancement)
+  // For now, proceed with OAuth flow
+  
   const clientID = process.env.LINKEDIN_CLIENT_ID;
   const callbackURL = process.env.LINKEDIN_CALLBACK_URL || '/auth/linkedin/callback';
   const state = require('crypto').randomBytes(16).toString('hex');
@@ -36,12 +69,15 @@ router.get('/linkedin', (req, res) => {
     console.log('✅ Session saved successfully, Session ID:', req.sessionID);
     
     // Construct LinkedIn OAuth URL with OpenID Connect scopes
+    // LinkedIn will automatically use existing session if user is logged in
+    // If they've authorized before, it will auto-approve
     const scope = 'openid profile email';
     const authURL = `https://www.linkedin.com/oauth/v2/authorization?response_type=code&client_id=${clientID}&redirect_uri=${encodeURIComponent(callbackURL)}&state=${state}&scope=${encodeURIComponent(scope)}`;
     
     console.log('LinkedIn OAuth URL:', authURL);
     console.log('State stored in session:', state.substring(0, 8) + '...');
     console.log('Redirecting to LinkedIn...');
+    console.log('ℹ️  Note: If user is already logged into LinkedIn, they will see a consent screen or auto-approve');
     
     res.redirect(authURL);
   });

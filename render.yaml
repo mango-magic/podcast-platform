@@ -27,15 +27,9 @@ services:
       - key: MINIO_BUCKET
         value: podcasts
       - key: FRONTEND_URL
-        fromService:
-          type: web
-          name: podcast-platform-frontend
-          property: host
+        value: https://podcast-platform-frontend.onrender.com
       - key: API_URL
-        fromService:
-          type: web
-          name: podcast-platform-backend
-          property: host
+        value: https://podcast-platform-backend.onrender.com
       - key: LINKEDIN_CLIENT_ID
         sync: false
       - key: LINKEDIN_CLIENT_SECRET
@@ -50,10 +44,7 @@ services:
     staticPublishPath: ./frontend/build
     envVars:
       - key: REACT_APP_API_URL
-        fromService:
-          type: web
-          name: podcast-platform-backend
-          property: host
+        value: https://podcast-platform-backend.onrender.com
 
 databases:
   - name: podcast-db

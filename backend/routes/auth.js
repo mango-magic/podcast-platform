@@ -20,11 +20,34 @@ router.get('/linkedin/callback',
         { expiresIn: '7d' }
       );
       
-      const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3001';
+      // Get frontend URL - ensure it has protocol in production
+      let frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3001';
+      
+      // If FRONTEND_URL doesn't have protocol and we're in production, add https://
+      if (process.env.NODE_ENV === 'production' && !frontendUrl.startsWith('http')) {
+        frontendUrl = `https://${frontendUrl}`;
+      }
+      
+      // Fallback to production URL if FRONTEND_URL is not set
+      if (!process.env.FRONTEND_URL && process.env.NODE_ENV === 'production') {
+        frontendUrl = 'https://podcast-platform-frontend.onrender.com';
+      }
+      
+      console.log(`Redirecting to frontend: ${frontendUrl}/auth/callback`);
       res.redirect(`${frontendUrl}/auth/callback?token=${token}`);
     } catch (error) {
       console.error('Token generation error:', error);
-      res.redirect(`${process.env.FRONTEND_URL || 'http://localhost:3001'}/auth/error`);
+      
+      // Same logic for error redirect
+      let frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3001';
+      if (process.env.NODE_ENV === 'production' && !frontendUrl.startsWith('http')) {
+        frontendUrl = `https://${frontendUrl}`;
+      }
+      if (!process.env.FRONTEND_URL && process.env.NODE_ENV === 'production') {
+        frontendUrl = 'https://podcast-platform-frontend.onrender.com';
+      }
+      
+      res.redirect(`${frontendUrl}/auth/error`);
     }
   }
 );

@@ -1,6 +1,13 @@
 const { Sequelize } = require('sequelize');
 
 // Initialize Sequelize
+if (!process.env.DATABASE_URL) {
+  console.error('❌ DATABASE_URL environment variable is not set!');
+  console.error('Please set DATABASE_URL in your Render environment variables.');
+  console.error('You can get it from: https://dashboard.render.com/d/dpg-d49liv8gjchc73fflmr0-a');
+  process.exit(1);
+}
+
 const sequelize = new Sequelize(process.env.DATABASE_URL, {
   dialect: 'postgres',
   logging: process.env.NODE_ENV === 'development' ? console.log : false,
@@ -9,6 +16,12 @@ const sequelize = new Sequelize(process.env.DATABASE_URL, {
     min: 0,
     acquire: 30000,
     idle: 10000
+  },
+  dialectOptions: {
+    ssl: process.env.NODE_ENV === 'production' ? {
+      require: true,
+      rejectUnauthorized: false
+    } : false
   }
 });
 

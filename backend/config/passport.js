@@ -15,40 +15,41 @@ passport.use(new LinkedInStrategy({
   authorizationURL: 'https://www.linkedin.com/oauth/v2/authorization',
   tokenURL: 'https://www.linkedin.com/oauth/v2/accessToken',
   profileURL: 'https://api.linkedin.com/v2/userinfo',
-  skipUserProfile: false // Let Passport try, but we'll handle failures gracefully
-}, async (accessToken, refreshToken, profile, done) => {
+  skipUserProfile: true // Skip Passport's profile fetch - it tries to use /me which doesn't work with OpenID Connect
+}, async (accessToken, refreshToken, params, done) => {
   try {
     console.log('=== Passport Callback ===');
     console.log('Access token received:', accessToken ? 'present' : 'missing');
     console.log('Refresh token received:', refreshToken ? 'present' : 'missing');
-    console.log('Profile received:', profile ? JSON.stringify(profile, null, 2) : 'missing');
+    console.log('Params:', params);
     
-    // If profile fetch failed, profile might be null, undefined, or have an error
-    // Try to fetch profile manually using access token
-    if (!profile || (!profile.id && !profile.sub)) {
-      console.log('Profile not available from Passport, fetching manually...');
-      try {
-        const profileResponse = await axios.get('https://api.linkedin.com/v2/userinfo', {
-          headers: {
-            'Authorization': `Bearer ${accessToken}`,
-            'Content-Type': 'application/json'
-          },
-          timeout: 10000
-        });
-        
-        console.log('✅ Manually fetched profile:', JSON.stringify(profileResponse.data, null, 2));
-        // Use manually fetched profile data
-        profile = {
-          ...profileResponse.data,
-          _json: profileResponse.data
-        };
-      } catch (fetchError) {
-        console.error('❌ Failed to fetch profile manually:', fetchError.message);
-        console.error('Error details:', fetchError.response?.data || fetchError.message);
-        
-        // If manual fetch fails, return error - we need profile data
-        return done(new Error(`Failed to fetch user profile: ${fetchError.message}`), null);
-      }
+    // Since skipUserProfile is true, we need to fetch profile manually
+    console.log('Fetching profile from LinkedIn OpenID Connect endpoint...');
+    let profile;
+    
+    try {
+      const profileResponse = await axios.get('https://api.linkedin.com/v2/userinfo', {
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Content-Type': 'application/json'
+        },
+        timeout: 10000
+      });
+      
+      console.log('✅ Successfully fetched profile:', JSON.stringify(profileResponse.data, null, 2));
+      // Format profile to match Passport's expected structure
+      profile = {
+        ...profileResponse.data,
+        id: profileResponse.data.sub, // Passport expects 'id'
+        _json: profileResponse.data
+      };
+    } catch (fetchError) {
+      console.error('❌ Failed to fetch profile from LinkedIn:', fetchError.message);
+      console.error('Error status:', fetchError.response?.status);
+      console.error('Error data:', fetchError.response?.data || fetchError.message);
+      
+      // If manual fetch fails, return error - we need profile data
+      return done(new Error(`Failed to fetch user profile: ${fetchError.response?.data?.message || fetchError.message}`), null);
     }
     
     // Log full profile for debugging

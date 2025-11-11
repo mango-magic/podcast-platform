@@ -37,10 +37,18 @@ app.use(session({
     secure: process.env.NODE_ENV === 'production', // HTTPS only in production
     httpOnly: true,
     maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
-    sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax' // Allow cross-site for OAuth redirects
+    sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax', // Allow cross-site for OAuth redirects
+    // Don't set domain - let browser handle it
+    // path: '/' ensures cookie is sent for all paths
+    path: '/'
   },
   name: 'podcast-platform.sid' // Custom session name
 }));
+
+// Trust proxy for Render (needed for proper IP/secure cookie handling)
+if (process.env.NODE_ENV === 'production') {
+  app.set('trust proxy', 1);
+}
 
 // Passport middleware
 app.use(passport.initialize());

@@ -14,6 +14,16 @@ router.get('/linkedin', (req, res) => {
   
   // Store state in session for verification
   req.session.oauthState = state;
+  req.session.stateTimestamp = Date.now(); // Track when state was created
+  
+  // Log session details before save
+  console.log('=== OAuth Initiation ===');
+  console.log('Session ID:', req.sessionID);
+  console.log('State to store:', state.substring(0, 8) + '...');
+  console.log('Session before save:', {
+    oauthState: req.session.oauthState ? 'set' : 'not set',
+    sessionID: req.sessionID
+  });
   
   // Save session before redirect (important for session persistence)
   req.session.save((err) => {
@@ -22,12 +32,17 @@ router.get('/linkedin', (req, res) => {
       return res.status(500).json({ error: 'Failed to initialize OAuth' });
     }
     
+    // Log that session was saved
+    console.log('✅ Session saved successfully, Session ID:', req.sessionID);
+    
     // Construct LinkedIn OAuth URL with OpenID Connect scopes
     const scope = 'openid profile email';
     const authURL = `https://www.linkedin.com/oauth/v2/authorization?response_type=code&client_id=${clientID}&redirect_uri=${encodeURIComponent(callbackURL)}&state=${state}&scope=${encodeURIComponent(scope)}`;
     
     console.log('LinkedIn OAuth URL:', authURL);
     console.log('State stored in session:', state.substring(0, 8) + '...');
+    console.log('Redirecting to LinkedIn...');
+    
     res.redirect(authURL);
   });
 });
@@ -44,9 +59,16 @@ router.get('/linkedin/callback',
       error_description: req.query.error_description
     });
     console.log('Session state:', req.session.oauthState ? 'present' : 'missing');
+    console.log('Session ID:', req.sessionID);
+    console.log('Cookies received:', req.headers.cookie ? 'present' : 'missing');
+    console.log('Session data:', {
+      oauthState: req.session.oauthState ? req.session.oauthState.substring(0, 8) + '...' : 'missing',
+      sessionID: req.sessionID
+    });
     console.log('Headers:', {
       'user-agent': req.headers['user-agent'],
-      'referer': req.headers['referer']
+      'referer': req.headers['referer'],
+      'cookie': req.headers.cookie ? 'present' : 'missing'
     });
     
     // Check for OAuth errors from LinkedIn

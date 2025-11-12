@@ -1,6 +1,6 @@
 import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
-import { ThemeProvider, createTheme } from '@mui/material/styles';
+import { ThemeProvider } from '@mui/material/styles';
 import CssBaseline from '@mui/material/CssBaseline';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { ToastProvider } from './contexts/ToastContext';
@@ -18,31 +18,8 @@ import Settings from './pages/Settings';
 import AuthCallback from './pages/AuthCallback';
 import AuthError from './pages/AuthError';
 import Onboarding from './pages/Onboarding';
-
-const theme = createTheme({
-  palette: {
-    primary: {
-      main: '#1976d2',
-    },
-    secondary: {
-      main: '#dc004e',
-    },
-  },
-  shape: {
-    borderRadius: 12,
-  },
-  transitions: {
-    duration: {
-      shortest: 150,
-      shorter: 200,
-      short: 250,
-      standard: 300,
-      complex: 375,
-      enteringScreen: 225,
-      leavingScreen: 195,
-    },
-  },
-});
+import PodcastInspirationMap from './pages/PodcastInspirationMap';
+import { futuristicTheme } from './theme/futuristicTheme';
 
 const PrivateRoute = ({ children }) => {
   const { user, loading, isGuestMode } = useAuth();
@@ -82,7 +59,7 @@ const OnboardingRoute = ({ children }) => {
 
 function App() {
   return (
-    <ThemeProvider theme={theme}>
+    <ThemeProvider theme={futuristicTheme}>
       <CssBaseline />
       <ErrorBoundary>
         <ToastProvider>
@@ -176,6 +153,14 @@ function App() {
                 element={
                   <PrivateRoute>
                     <Settings />
+                  </PrivateRoute>
+                } 
+              />
+              <Route 
+                path="/inspiration" 
+                element={
+                  <PrivateRoute>
+                    <PodcastInspirationMap />
                   </PrivateRoute>
                 } 
               />

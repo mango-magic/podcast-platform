@@ -38,6 +38,38 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useToast } from '../contexts/ToastContext';
 import Layout from '../components/Layout';
 
+// Enhanced recording configuration
+const getOptimalRecordingSettings = () => {
+  const capabilities = {
+    vp9: MediaRecorder.isTypeSupported('video/webm;codecs=vp9,opus'),
+    vp8: MediaRecorder.isTypeSupported('video/webm;codecs=vp8,opus'),
+    h264: MediaRecorder.isTypeSupported('video/mp4;codecs=avc1.42E01E')
+  };
+
+  if (capabilities.vp9) {
+    return {
+      type: 'video',
+      mimeType: 'video/webm;codecs=vp9,opus',
+      videoBitsPerSecond: 5000000, // 5 Mbps for better quality
+      audioBitsPerSecond: 192000
+    };
+  } else if (capabilities.vp8) {
+    return {
+      type: 'video',
+      mimeType: 'video/webm;codecs=vp8,opus',
+      videoBitsPerSecond: 3000000,
+      audioBitsPerSecond: 128000
+    };
+  } else {
+    return {
+      type: 'video',
+      mimeType: 'video/webm',
+      videoBitsPerSecond: 2500000,
+      audioBitsPerSecond: 128000
+    };
+  }
+};
+
 function RecordPodcast() {
   const [searchParams] = useSearchParams();
   const podcastIdParam = searchParams.get('podcastId');
@@ -115,19 +147,38 @@ function RecordPodcast() {
 
     try {
       setError(null);
+      
+      // Enhanced media constraints for better quality
       const stream = await navigator.mediaDevices.getUserMedia({
-        audio: true,
-        video: true
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+          sampleRate: 48000,
+          channelCount: 2
+        },
+        video: {
+          width: { ideal: 1920, min: 1280 },
+          height: { ideal: 1080, min: 720 },
+          frameRate: { ideal: 30, min: 24 },
+          facingMode: 'user',
+          aspectRatio: 16/9
+        }
       });
       
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
       }
       
+      // Get optimal recording settings based on browser capabilities
+      const recordingSettings = getOptimalRecordingSettings();
+      
       const recorder = new RecordRTC(stream, {
-        type: 'video',
-        mimeType: 'video/webm',
-        videoBitsPerSecond: 2500000
+        ...recordingSettings,
+        timeSlice: 1000, // Record in 1-second chunks for better reliability
+        getNativeBlob: false, // Use RecordRTC's blob handling
+        checkForInactiveTracks: true,
+        showMousePointer: false
       });
       
       recorder.startRecording();

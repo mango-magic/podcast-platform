@@ -1,6 +1,7 @@
 const express = require('express');
 const { Clip, Episode, Podcast } = require('../models');
 const authMiddleware = require('../middleware/auth');
+const videoProcessor = require('../services/videoProcessor');
 const router = express.Router();
 
 // All routes require authentication
@@ -77,10 +78,10 @@ router.get('/:id', async (req, res) => {
   }
 });
 
-// Create new clip
+// Create new clip (with automatic video processing)
 router.post('/', async (req, res) => {
   try {
-    const { episodeId, title, startTime, duration, videoUrl, audioUrl, platform } = req.body;
+    const { episodeId, title, startTime, duration, platform, autoGenerate } = req.body;
     
     if (!episodeId || !title || startTime === undefined || !duration) {
       return res.status(400).json({ error: 'Episode ID, title, start time, and duration are required' });
@@ -102,6 +103,36 @@ router.post('/', async (req, res) => {
       return res.status(404).json({ error: 'Episode not found' });
     }
     
+    if (!episode.videoUrl && !episode.audioUrl) {
+      return res.status(400).json({ error: 'Episode must have video or audio URL' });
+    }
+    
+    let videoUrl = null;
+    let audioUrl = null;
+    let thumbnailUrl = null;
+    
+    // Auto-generate clip using FFmpeg if requested and video exists
+    if (autoGenerate !== false && episode.videoUrl) {
+      try {
+        const processedClip = await videoProcessor.generateClip(
+          episode.videoUrl,
+          startTime,
+          duration,
+          platform || 'general'
+        );
+        videoUrl = processedClip.videoUrl;
+        audioUrl = processedClip.audioUrl;
+        thumbnailUrl = processedClip.thumbnailUrl;
+      } catch (error) {
+        console.error('Error auto-generating clip:', error);
+        // Fall back to manual creation if processing fails
+        return res.status(500).json({ 
+          error: 'Failed to generate clip. Please ensure FFmpeg is installed and video URL is accessible.',
+          details: error.message 
+        });
+      }
+    }
+    
     const clip = await Clip.create({
       episodeId,
       title,
@@ -109,6 +140,7 @@ router.post('/', async (req, res) => {
       duration,
       videoUrl,
       audioUrl,
+      thumbnailUrl,
       platform: platform || 'general',
       status: 'draft'
     });
@@ -117,6 +149,56 @@ router.post('/', async (req, res) => {
   } catch (error) {
     console.error('Error creating clip:', error);
     res.status(500).json({ error: 'Failed to create clip' });
+  }
+});
+
+// Generate clip automatically from episode (new endpoint)
+router.post('/generate', async (req, res) => {
+  try {
+    const { episodeId, startTime, duration, platform } = req.body;
+    
+    if (!episodeId || startTime === undefined || !duration) {
+      return res.status(400).json({ error: 'Episode ID, start time, and duration are required' });
+    }
+    
+    // Verify episode belongs to user
+    const episode = await Episode.findByPk(episodeId, {
+      include: [
+        { 
+          model: Podcast, 
+          as: 'podcast',
+          where: { userId: req.user.id },
+          required: true
+        }
+      ]
+    });
+    
+    if (!episode) {
+      return res.status(404).json({ error: 'Episode not found' });
+    }
+    
+    if (!episode.videoUrl) {
+      return res.status(400).json({ error: 'Episode must have video URL for clip generation' });
+    }
+    
+    // Generate clip using FFmpeg
+    const processedClip = await videoProcessor.generateClip(
+      episode.videoUrl,
+      startTime,
+      duration,
+      platform || 'general'
+    );
+    
+    res.json({
+      success: true,
+      ...processedClip
+    });
+  } catch (error) {
+    console.error('Error generating clip:', error);
+    res.status(500).json({ 
+      error: 'Failed to generate clip',
+      details: error.message 
+    });
   }
 });
 

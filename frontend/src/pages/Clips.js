@@ -113,14 +113,19 @@ function Clips() {
         await api.put(`/api/clips/${editingClip.id}`, formData);
         showToast('Clip updated successfully!', 'success');
       } else {
-        await api.post('/api/clips', formData);
-        showToast('Clip created successfully!', 'success');
+        // Auto-generate clip using FFmpeg
+        const response = await api.post('/api/clips', {
+          ...formData,
+          autoGenerate: true // Enable automatic clip generation
+        });
+        showToast('Clip created and processed successfully!', 'success');
       }
       handleCloseDialog();
       fetchClips();
     } catch (error) {
       console.error('Error saving clip:', error);
-      showToast('Failed to save clip', 'error');
+      const errorMsg = error.response?.data?.error || 'Failed to save clip';
+      showToast(errorMsg, 'error');
     }
   };
 

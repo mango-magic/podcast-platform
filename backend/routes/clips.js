@@ -133,17 +133,21 @@ router.post('/', async (req, res) => {
       }
     }
     
-    const clip = await Clip.create({
+    const clipData = {
       episodeId,
       title,
       startTime,
       duration,
-      videoUrl,
-      audioUrl,
-      thumbnailUrl,
       platform: platform || 'general',
       status: 'draft'
-    });
+    };
+    
+    // Only add URLs if they exist
+    if (videoUrl) clipData.videoUrl = videoUrl;
+    if (audioUrl) clipData.audioUrl = audioUrl;
+    if (thumbnailUrl) clipData.thumbnailUrl = thumbnailUrl;
+    
+    const clip = await Clip.create(clipData);
     
     res.status(201).json(clip);
   } catch (error) {
@@ -226,17 +230,19 @@ router.put('/:id', async (req, res) => {
       return res.status(404).json({ error: 'Clip not found' });
     }
     
-    const { title, startTime, duration, videoUrl, audioUrl, platform, status } = req.body;
+    const { title, startTime, duration, videoUrl, audioUrl, thumbnailUrl, platform, status } = req.body;
     
-    await clip.update({
-      title: title || clip.title,
-      startTime: startTime !== undefined ? startTime : clip.startTime,
-      duration: duration !== undefined ? duration : clip.duration,
-      videoUrl: videoUrl !== undefined ? videoUrl : clip.videoUrl,
-      audioUrl: audioUrl !== undefined ? audioUrl : clip.audioUrl,
-      platform: platform || clip.platform,
-      status: status || clip.status
-    });
+    const updateData = {};
+    if (title !== undefined) updateData.title = title;
+    if (startTime !== undefined) updateData.startTime = startTime;
+    if (duration !== undefined) updateData.duration = duration;
+    if (videoUrl !== undefined) updateData.videoUrl = videoUrl;
+    if (audioUrl !== undefined) updateData.audioUrl = audioUrl;
+    if (thumbnailUrl !== undefined) updateData.thumbnailUrl = thumbnailUrl;
+    if (platform !== undefined) updateData.platform = platform;
+    if (status !== undefined) updateData.status = status;
+    
+    await clip.update(updateData);
     
     res.json(clip);
   } catch (error) {

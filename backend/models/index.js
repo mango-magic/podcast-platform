@@ -230,6 +230,11 @@ const Clip = sequelize.define('Clip', {
     type: Sequelize.TEXT,
     allowNull: true
   },
+  thumbnailUrl: {
+    type: Sequelize.TEXT,
+    allowNull: true,
+    comment: 'Thumbnail image URL for the clip'
+  },
   platform: {
     type: Sequelize.ENUM('tiktok', 'instagram', 'linkedin', 'youtube', 'twitter', 'general'),
     defaultValue: 'general'

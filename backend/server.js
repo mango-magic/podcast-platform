@@ -55,11 +55,29 @@ app.use(passport.initialize());
 app.use(passport.session());
 
 // Health check
-app.get('/health', (req, res) => {
+app.get('/health', async (req, res) => {
+  const { exec } = require('child_process');
+  const { promisify } = require('util');
+  const execAsync = promisify(exec);
+  
+  let ffmpegAvailable = false;
+  try {
+    await execAsync('ffmpeg -version');
+    ffmpegAvailable = true;
+  } catch (error) {
+    ffmpegAvailable = false;
+  }
+  
   res.json({ 
     status: 'ok', 
     timestamp: new Date().toISOString(),
-    environment: process.env.NODE_ENV || 'development'
+    environment: process.env.NODE_ENV || 'development',
+    ffmpeg: ffmpegAvailable ? 'available' : 'not available',
+    features: {
+      videoProcessing: ffmpegAvailable,
+      clipGeneration: ffmpegAvailable,
+      thumbnailGeneration: ffmpegAvailable
+    }
   });
 });
 

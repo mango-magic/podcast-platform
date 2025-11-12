@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { 
-  Container, 
   Typography, 
   Button, 
   Box, 
@@ -26,6 +25,7 @@ import {
 import { ThemeProvider, createTheme } from '@mui/material/styles';
 import { StatsSkeleton, RecommendationsSkeleton } from '../components/Skeletons';
 import { useToast } from '../contexts/ToastContext';
+import Layout from '../components/Layout';
 
 function Dashboard() {
   const { user, loading: authLoading, login, isGuestMode } = useAuth();
@@ -179,7 +179,7 @@ function Dashboard() {
 
   return (
     <ThemeProvider theme={theme}>
-      <Container component="main">
+      <Layout>
         <Box sx={{ mt: 4 }}>
           <Box sx={{ mb: 3, position: 'relative' }}>
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 2, flexWrap: 'wrap', gap: 2 }}>
@@ -487,7 +487,7 @@ function Dashboard() {
             )}
           </Box>
         </Box>
-      </Container>
+      </Layout>
     </ThemeProvider>
   );
 }

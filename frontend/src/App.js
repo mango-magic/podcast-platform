@@ -4,10 +4,17 @@ import { ThemeProvider, createTheme } from '@mui/material/styles';
 import CssBaseline from '@mui/material/CssBaseline';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { ToastProvider } from './contexts/ToastContext';
+import ErrorBoundary from './components/ErrorBoundary';
 import Dashboard from './pages/Dashboard';
 import RecordPodcast from './pages/RecordPodcast';
 import Episodes from './pages/Episodes';
+import EpisodeDetail from './pages/EpisodeDetail';
 import Podcasts from './pages/Podcasts';
+import PodcastDetail from './pages/PodcastDetail';
+import Guests from './pages/Guests';
+import Clips from './pages/Clips';
+import Distributions from './pages/Distributions';
+import Settings from './pages/Settings';
 import AuthCallback from './pages/AuthCallback';
 import AuthError from './pages/AuthError';
 import Onboarding from './pages/Onboarding';
@@ -77,11 +84,11 @@ function App() {
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
-      <ToastProvider>
-        <AuthProvider>
-          <BrowserRouter>
-            <Routes>
-              <Route path="/" element={<Dashboard />} />
+      <ErrorBoundary>
+        <ToastProvider>
+          <AuthProvider>
+            <BrowserRouter>
+              <Routes>
               <Route path="/auth/callback" element={<AuthCallback />} />
               <Route path="/auth/error" element={<AuthError />} />
               <Route 
@@ -90,6 +97,14 @@ function App() {
                   <OnboardingRoute>
                     <Onboarding />
                   </OnboardingRoute>
+                } 
+              />
+              <Route 
+                path="/" 
+                element={
+                  <PrivateRoute>
+                    <Dashboard />
+                  </PrivateRoute>
                 } 
               />
               <Route 
@@ -109,6 +124,14 @@ function App() {
                 } 
               />
               <Route 
+                path="/episodes/:id" 
+                element={
+                  <PrivateRoute>
+                    <EpisodeDetail />
+                  </PrivateRoute>
+                } 
+              />
+              <Route 
                 path="/podcasts" 
                 element={
                   <PrivateRoute>
@@ -116,10 +139,51 @@ function App() {
                   </PrivateRoute>
                 } 
               />
-            </Routes>
-          </BrowserRouter>
-        </AuthProvider>
-      </ToastProvider>
+              <Route 
+                path="/podcasts/:id" 
+                element={
+                  <PrivateRoute>
+                    <PodcastDetail />
+                  </PrivateRoute>
+                } 
+              />
+              <Route 
+                path="/guests" 
+                element={
+                  <PrivateRoute>
+                    <Guests />
+                  </PrivateRoute>
+                } 
+              />
+              <Route 
+                path="/clips" 
+                element={
+                  <PrivateRoute>
+                    <Clips />
+                  </PrivateRoute>
+                } 
+              />
+              <Route 
+                path="/distributions" 
+                element={
+                  <PrivateRoute>
+                    <Distributions />
+                  </PrivateRoute>
+                } 
+              />
+              <Route 
+                path="/settings" 
+                element={
+                  <PrivateRoute>
+                    <Settings />
+                  </PrivateRoute>
+                } 
+              />
+              </Routes>
+            </BrowserRouter>
+          </AuthProvider>
+        </ToastProvider>
+      </ErrorBoundary>
     </ThemeProvider>
   );
 }

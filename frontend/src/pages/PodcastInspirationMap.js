@@ -42,6 +42,11 @@ const PodcastInspirationMap = () => {
     const loadPodcastData = async () => {
       try {
         const response = await fetch('/Podcast_Name_Ideas.md');
+        if (!response.ok) {
+          console.warn('Podcast ideas file not found, skipping inspiration map');
+          setLoading(false);
+          return;
+        }
         const text = await response.text();
         const parsed = parsePodcastIdeas(text);
         
@@ -67,9 +72,10 @@ const PodcastInspirationMap = () => {
       } catch (error) {
         console.error('Error loading podcast data:', error);
         setLoading(false);
+        // Don't break the app if inspiration map fails to load
       }
     };
-
+    
     loadPodcastData();
   }, []);
 

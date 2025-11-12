@@ -1,6 +1,6 @@
 import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
-import { ThemeProvider } from '@mui/material/styles';
+import { ThemeProvider, createTheme } from '@mui/material/styles';
 import CssBaseline from '@mui/material/CssBaseline';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { ToastProvider } from './contexts/ToastContext';
@@ -19,7 +19,24 @@ import AuthCallback from './pages/AuthCallback';
 import AuthError from './pages/AuthError';
 import Onboarding from './pages/Onboarding';
 import PodcastInspirationMap from './pages/PodcastInspirationMap';
-import { futuristicTheme } from './theme/futuristicTheme';
+
+// Import theme with fallback
+let futuristicTheme;
+try {
+  const themeModule = require('./theme/futuristicTheme');
+  futuristicTheme = themeModule.futuristicTheme;
+} catch (error) {
+  console.warn('Could not load futuristic theme, using default');
+  futuristicTheme = null;
+}
+
+// Fallback theme if futuristicTheme fails to load
+const defaultTheme = createTheme({
+  palette: {
+    primary: { main: '#1976d2' },
+    secondary: { main: '#dc004e' }
+  }
+});
 
 const PrivateRoute = ({ children }) => {
   const { user, loading, isGuestMode } = useAuth();
@@ -58,8 +75,11 @@ const OnboardingRoute = ({ children }) => {
 };
 
 function App() {
+  // Use futuristic theme if available, otherwise fallback
+  const theme = futuristicTheme || defaultTheme;
+  
   return (
-    <ThemeProvider theme={futuristicTheme}>
+    <ThemeProvider theme={theme}>
       <CssBaseline />
       <ErrorBoundary>
         <ToastProvider>

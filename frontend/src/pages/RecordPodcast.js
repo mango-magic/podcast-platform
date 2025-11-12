@@ -40,6 +40,17 @@ import Layout from '../components/Layout';
 
 // Enhanced recording configuration
 const getOptimalRecordingSettings = () => {
+  // Check if MediaRecorder is available (not available during SSR or in non-browser environments)
+  if (typeof MediaRecorder === 'undefined' || !MediaRecorder.isTypeSupported) {
+    // Fallback to basic settings
+    return {
+      type: 'video',
+      mimeType: 'video/webm',
+      videoBitsPerSecond: 2500000,
+      audioBitsPerSecond: 128000
+    };
+  }
+
   const capabilities = {
     vp9: MediaRecorder.isTypeSupported('video/webm;codecs=vp9,opus'),
     vp8: MediaRecorder.isTypeSupported('video/webm;codecs=vp8,opus'),

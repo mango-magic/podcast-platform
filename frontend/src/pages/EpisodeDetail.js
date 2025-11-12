@@ -109,9 +109,32 @@ function EpisodeDetail() {
     }
   };
 
-  const handleCopyLink = () => {
-    navigator.clipboard.writeText(shareLink);
-    showToast('Link copied to clipboard!', 'success');
+  const handleCopyLink = async () => {
+    try {
+      // Check if clipboard API is available
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(shareLink);
+        showToast('Link copied to clipboard!', 'success');
+      } else {
+        // Fallback for browsers without clipboard API
+        const textArea = document.createElement('textarea');
+        textArea.value = shareLink;
+        textArea.style.position = 'fixed';
+        textArea.style.opacity = '0';
+        document.body.appendChild(textArea);
+        textArea.select();
+        try {
+          document.execCommand('copy');
+          showToast('Link copied to clipboard!', 'success');
+        } catch (err) {
+          showToast('Failed to copy link. Please copy manually.', 'error');
+        }
+        document.body.removeChild(textArea);
+      }
+    } catch (error) {
+      console.error('Error copying to clipboard:', error);
+      showToast('Failed to copy link. Please copy manually.', 'error');
+    }
   };
 
   const handleShare = (platform) => {

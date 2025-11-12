@@ -19,18 +19,9 @@ import AuthCallback from './pages/AuthCallback';
 import AuthError from './pages/AuthError';
 import Onboarding from './pages/Onboarding';
 import PodcastInspirationMap from './pages/PodcastInspirationMap';
+import { futuristicTheme } from './theme/futuristicTheme';
 
-// Import theme with fallback
-let futuristicTheme;
-try {
-  const themeModule = require('./theme/futuristicTheme');
-  futuristicTheme = themeModule.futuristicTheme;
-} catch (error) {
-  console.warn('Could not load futuristic theme, using default');
-  futuristicTheme = null;
-}
-
-// Fallback theme if futuristicTheme fails to load
+// Fallback theme if needed
 const defaultTheme = createTheme({
   palette: {
     primary: { main: '#1976d2' },
@@ -75,8 +66,8 @@ const OnboardingRoute = ({ children }) => {
 };
 
 function App() {
-  // Use futuristic theme if available, otherwise fallback
-  const theme = futuristicTheme || defaultTheme;
+  // Use futuristic theme, fallback to default if undefined
+  const theme = futuristicTheme ? futuristicTheme : defaultTheme;
   
   return (
     <ThemeProvider theme={theme}>

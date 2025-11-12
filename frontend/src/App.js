@@ -38,13 +38,18 @@ const theme = createTheme({
 });
 
 const PrivateRoute = ({ children }) => {
-  const { user, loading } = useAuth();
+  const { user, loading, isGuestMode } = useAuth();
   
   if (loading) {
     return <div>Loading...</div>;
   }
   
-  return user ? children : <Navigate to="/" />;
+  // Allow access if user exists OR guest mode is enabled
+  if (user || isGuestMode) {
+    return children;
+  }
+  
+  return <Navigate to="/" />;
 };
 
 const OnboardingRoute = ({ children }) => {

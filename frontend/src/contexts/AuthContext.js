@@ -3,6 +3,23 @@ import { getCurrentUser, getToken, setToken, logout as authLogout } from '../ser
 
 const AuthContext = createContext();
 
+// Guest mode flag - set to true to bypass LinkedIn auth
+const GUEST_MODE = true; // Set to false to re-enable LinkedIn auth
+
+// Mock user for guest mode
+const MOCK_GUEST_USER = {
+  id: 'guest-user',
+  email: 'guest@mangomagic.com',
+  name: 'Guest User',
+  linkedinId: 'guest',
+  persona: 'CMO',
+  vertical: 'SaaS',
+  profileCompleted: true,
+  profilePictureUrl: null,
+  createdAt: new Date().toISOString(),
+  updatedAt: new Date().toISOString()
+};
+
 export const useAuth = () => {
   const context = useContext(AuthContext);
   if (!context) {
@@ -14,9 +31,19 @@ export const useAuth = () => {
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [isGuestMode] = useState(GUEST_MODE);
 
   useEffect(() => {
     const initAuth = async () => {
+      // If guest mode is enabled, use mock user
+      if (GUEST_MODE) {
+        console.log('🎭 Guest mode enabled - bypassing LinkedIn auth');
+        setUser(MOCK_GUEST_USER);
+        setLoading(false);
+        return;
+      }
+
+      // Normal auth flow
       const token = getToken();
       if (token) {
         try {
@@ -34,6 +61,13 @@ export const AuthProvider = ({ children }) => {
   }, []);
 
   const login = async () => {
+    // If guest mode is enabled, just set the mock user
+    if (GUEST_MODE) {
+      console.log('🎭 Guest mode: Using mock user');
+      setUser(MOCK_GUEST_USER);
+      return;
+    }
+
     // Check if user already has a valid token before redirecting
     const existingToken = getToken();
     if (existingToken) {
@@ -58,6 +92,11 @@ export const AuthProvider = ({ children }) => {
   };
 
   const logout = () => {
+    if (GUEST_MODE) {
+      // In guest mode, just clear the user
+      setUser(null);
+      return;
+    }
     authLogout();
     setUser(null);
   };
@@ -72,7 +111,7 @@ export const AuthProvider = ({ children }) => {
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, logout, handleAuthCallback, updateUser }}>
+    <AuthContext.Provider value={{ user, loading, login, logout, handleAuthCallback, updateUser, isGuestMode }}>
       {children}
     </AuthContext.Provider>
   );

@@ -17,9 +17,13 @@ api.interceptors.request.use((config) => {
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    if (error.response?.status === 401) {
+    // In guest mode, don't redirect on 401 errors
+    if (error.response?.status === 401 && !localStorage.getItem('guest_mode')) {
       localStorage.removeItem('token');
-      window.location.href = '/login';
+      // Only redirect if not in guest mode
+      if (window.location.pathname !== '/') {
+        window.location.href = '/';
+      }
     }
     return Promise.reject(error);
   }

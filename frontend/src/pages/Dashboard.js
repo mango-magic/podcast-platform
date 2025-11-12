@@ -28,7 +28,7 @@ import { StatsSkeleton, RecommendationsSkeleton } from '../components/Skeletons'
 import { useToast } from '../contexts/ToastContext';
 
 function Dashboard() {
-  const { user, loading: authLoading, login } = useAuth();
+  const { user, loading: authLoading, login, isGuestMode } = useAuth();
   const { showToast } = useToast();
   const navigate = useNavigate();
   const [stats, setStats] = useState({ podcasts: 0, episodes: 0 });
@@ -125,6 +125,24 @@ function Dashboard() {
   }
 
   if (!user) {
+    // In guest mode, automatically log in with mock user
+    if (isGuestMode) {
+      login();
+      return (
+        <Container>
+          <Box 
+            display="flex" 
+            justifyContent="center" 
+            alignItems="center" 
+            minHeight="100vh"
+            aria-label="Loading dashboard"
+          >
+            <CircularProgress />
+          </Box>
+        </Container>
+      );
+    }
+
     return (
       <Container>
         <Box 

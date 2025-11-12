@@ -15,23 +15,26 @@ function AuthCallback() {
     const errorMessage = searchParams.get('message');
     
     if (errorMessage) {
-      setError(errorMessage);
-      setLoading(false);
+      // If there's an error message, redirect to error page
+      navigate(`/auth/error?message=${encodeURIComponent(errorMessage)}`);
       return;
     }
     
     if (token) {
-      try {
-        handleAuthCallback(token);
-        // Small delay to show loading state
-        setTimeout(() => {
+      const processAuth = async () => {
+        try {
+          handleAuthCallback(token);
+          // Small delay to show loading state and ensure token is saved
+          await new Promise(resolve => setTimeout(resolve, 1000));
           navigate('/');
-        }, 1000);
-      } catch (err) {
-        console.error('Auth callback error:', err);
-        setError('Failed to complete authentication. Please try again.');
-        setLoading(false);
-      }
+        } catch (err) {
+          console.error('Auth callback error:', err);
+          setError('Failed to complete authentication. Please try again.');
+          setLoading(false);
+        }
+      };
+      
+      processAuth();
     } else {
       setError('No authentication token received. Please try logging in again.');
       setLoading(false);

@@ -1,106 +1,168 @@
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
-import { useAuth } from '../contexts/AuthContext';
-import { Container, Box, CircularProgress, Typography, Alert, Button, Fade } from '@mui/material';
+import { 
+  Container, 
+  Box, 
+  Typography, 
+  Alert, 
+  Button, 
+  Fade,
+  Card,
+  CardContent,
+  Divider
+} from '@mui/material';
+import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline';
+import HomeIcon from '@mui/icons-material/Home';
+import RefreshIcon from '@mui/icons-material/Refresh';
 
-function AuthCallback() {
+function AuthError() {
   const [searchParams] = useSearchParams();
-  const { handleAuthCallback } = useAuth();
   const navigate = useNavigate();
-  const [error, setError] = useState(null);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    const token = searchParams.get('token');
-    const errorMessage = searchParams.get('message');
-    
-    if (errorMessage) {
-      setError(errorMessage);
-      setLoading(false);
-      return;
+  
+  const errorMessage = searchParams.get('message') || 'Authentication failed. Please try again.';
+  const errorCode = searchParams.get('code') || 'unknown';
+  
+  // Get user-friendly error title and suggestions based on error code
+  const getErrorDetails = (code) => {
+    switch (code) {
+      case 'auth_error':
+        return {
+          title: 'Authentication Error',
+          suggestion: 'There was an issue verifying your LinkedIn account. Please ensure your LinkedIn account has an email address and try again.',
+          icon: '🔐'
+        };
+      case 'no_user':
+        return {
+          title: 'User Not Found',
+          suggestion: 'We couldn\'t retrieve your user information. Please try logging in again.',
+          icon: '👤'
+        };
+      case 'token_error':
+        return {
+          title: 'Session Error',
+          suggestion: 'There was an issue creating your session. Please try logging in again.',
+          icon: '🔑'
+        };
+      default:
+        return {
+          title: 'Sign In Error',
+          suggestion: 'Something went wrong during sign in. Please try again.',
+          icon: '⚠️'
+        };
     }
-    
-    if (token) {
-      try {
-        handleAuthCallback(token);
-        // Small delay to show loading state
-        setTimeout(() => {
-          navigate('/');
-        }, 1000);
-      } catch (err) {
-        console.error('Auth callback error:', err);
-        setError('Failed to complete authentication. Please try again.');
-        setLoading(false);
-      }
-    } else {
-      setError('No authentication token received. Please try logging in again.');
-      setLoading(false);
-    }
-  }, [searchParams, handleAuthCallback, navigate]);
-
-  if (error) {
-    return (
-      <Container>
-        <Box 
-          display="flex" 
-          flexDirection="column" 
-          alignItems="center" 
-          justifyContent="center" 
-          minHeight="100vh"
-        >
-          <Fade in={true}>
-            <Box sx={{ textAlign: 'center', maxWidth: 500 }}>
-              <Alert severity="error" sx={{ mb: 3 }}>
-                {error}
-              </Alert>
-              <Box sx={{ display: 'flex', gap: 2, justifyContent: 'center', mt: 3 }}>
-                <Button
-                  variant="outlined"
-                  onClick={() => navigate('/')}
-                >
-                  Return to Home
-                </Button>
-                <Button
-                  variant="contained"
-                  onClick={() => {
-                    const apiUrl = process.env.REACT_APP_API_URL || 'http://localhost:3000';
-                    window.location.href = `${apiUrl}/auth/linkedin`;
-                  }}
-                >
-                  Try Again
-                </Button>
-              </Box>
-            </Box>
-          </Fade>
-        </Box>
-      </Container>
-    );
-  }
-
+  };
+  
+  const errorDetails = getErrorDetails(errorCode);
+  
+  const handleRetry = () => {
+    const apiUrl = process.env.REACT_APP_API_URL || 'http://localhost:3000';
+    window.location.href = `${apiUrl}/auth/linkedin`;
+  };
+  
   return (
-    <Container>
+    <Container maxWidth="sm">
       <Box 
         display="flex" 
         flexDirection="column" 
         alignItems="center" 
         justifyContent="center" 
         minHeight="100vh"
+        py={4}
       >
         <Fade in={true}>
-          <Box sx={{ textAlign: 'center' }}>
-            <CircularProgress size={60} sx={{ mb: 3 }} />
-            <Typography variant="h6" gutterBottom sx={{ fontWeight: 600 }}>
-              Completing sign in...
-            </Typography>
-            <Typography variant="body2" color="text.secondary">
-              Setting up your personalized experience ✨
-            </Typography>
-          </Box>
+          <Card 
+            sx={{ 
+              width: '100%',
+              textAlign: 'center',
+              boxShadow: 3,
+              borderRadius: 3
+            }}
+          >
+            <CardContent sx={{ p: 4 }}>
+              <Box sx={{ mb: 3 }}>
+                <Typography variant="h1" sx={{ fontSize: '4rem', mb: 2 }}>
+                  {errorDetails.icon}
+                </Typography>
+                <Typography variant="h5" gutterBottom sx={{ fontWeight: 600, mb: 1 }}>
+                  {errorDetails.title}
+                </Typography>
+                <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+                  {errorDetails.suggestion}
+                </Typography>
+              </Box>
+              
+              <Divider sx={{ my: 3 }} />
+              
+              <Alert 
+                severity="error" 
+                sx={{ 
+                  mb: 3,
+                  textAlign: 'left',
+                  '& .MuiAlert-message': {
+                    width: '100%'
+                  }
+                }}
+                icon={<ErrorOutlineIcon />}
+              >
+                <Typography variant="body2" component="div">
+                  <strong>Details:</strong> {errorMessage}
+                </Typography>
+              </Alert>
+              
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 4 }}>
+                <Button
+                  variant="contained"
+                  color="primary"
+                  size="large"
+                  onClick={handleRetry}
+                  startIcon={<RefreshIcon />}
+                  sx={{
+                    py: 1.5,
+                    fontWeight: 600,
+                    borderRadius: 2,
+                    textTransform: 'none'
+                  }}
+                >
+                  Try Signing In Again
+                </Button>
+                
+                <Button
+                  variant="outlined"
+                  size="large"
+                  onClick={() => navigate('/')}
+                  startIcon={<HomeIcon />}
+                  sx={{
+                    py: 1.5,
+                    borderRadius: 2,
+                    textTransform: 'none'
+                  }}
+                >
+                  Return to Home
+                </Button>
+              </Box>
+              
+              <Box sx={{ mt: 4, pt: 3, borderTop: '1px solid', borderColor: 'divider' }}>
+                <Typography variant="caption" color="text.secondary">
+                  If this problem persists, please check:
+                </Typography>
+                <Box component="ul" sx={{ mt: 1, textAlign: 'left', pl: 3 }}>
+                  <Typography component="li" variant="caption" color="text.secondary">
+                    Your LinkedIn account has an email address
+                  </Typography>
+                  <Typography component="li" variant="caption" color="text.secondary">
+                    You're using a supported browser
+                  </Typography>
+                  <Typography component="li" variant="caption" color="text.secondary">
+                    Cookies are enabled in your browser
+                  </Typography>
+                </Box>
+              </Box>
+            </CardContent>
+          </Card>
         </Fade>
       </Box>
     </Container>
   );
 }
 
-export default AuthCallback;
-
+export default AuthError;

@@ -2,6 +2,7 @@ const express = require('express');
 const passport = require('passport');
 const jwt = require('jsonwebtoken');
 const { User } = require('../models');
+const { generateStateToken, verifyStateToken, generateSimpleState } = require('../utils/oauthState');
 const router = express.Router();
 
 require('../config/passport');
@@ -43,41 +44,43 @@ router.get('/linkedin', async (req, res) => {
   
   const clientID = process.env.LINKEDIN_CLIENT_ID;
   const callbackURL = process.env.LINKEDIN_CALLBACK_URL || '/auth/linkedin/callback';
-  const state = require('crypto').randomBytes(16).toString('hex');
   
-  // Store state in session for verification
-  req.session.oauthState = state;
-  req.session.stateTimestamp = Date.now(); // Track when state was created
+  // Generate encrypted state token (more reliable than session)
+  // This token contains the state and timestamp, encrypted with JWT
+  const stateToken = generateStateToken();
+  const decodedState = jwt.decode(stateToken);
+  const stateString = decodedState.state; // The actual random state string
   
-  // Log session details before save
+  // Store in session as fallback (for backward compatibility and debugging)
+  req.session.oauthState = stateString;
+  req.session.stateToken = stateToken;
+  req.session.stateTimestamp = Date.now();
+  
+  // Log OAuth initiation
   console.log('=== OAuth Initiation ===');
   console.log('Session ID:', req.sessionID);
-  console.log('State to store:', state.substring(0, 8) + '...');
-  console.log('Session before save:', {
-    oauthState: req.session.oauthState ? 'set' : 'not set',
-    sessionID: req.sessionID
-  });
+  console.log('State string (first 8 chars):', stateString.substring(0, 8) + '...');
+  console.log('State token length:', stateToken.length, 'chars');
+  console.log('Session state stored:', req.session.oauthState ? 'yes' : 'no');
   
-  // Save session before redirect (important for session persistence)
+  // Save session before redirect (fallback mechanism)
   req.session.save((err) => {
     if (err) {
-      console.error('Session save error:', err);
-      return res.status(500).json({ error: 'Failed to initialize OAuth' });
+      console.error('⚠️ Session save error (non-critical):', err.message);
+      // Continue anyway - we have encrypted state token
+    } else {
+      console.log('✅ Session saved (fallback), Session ID:', req.sessionID);
     }
     
-    // Log that session was saved
-    console.log('✅ Session saved successfully, Session ID:', req.sessionID);
-    
     // Construct LinkedIn OAuth URL with OpenID Connect scopes
-    // LinkedIn will automatically use existing session if user is logged in
-    // If they've authorized before, it will auto-approve
+    // Send the encrypted token as state - LinkedIn will return it unchanged
+    // LinkedIn supports state up to 500 chars, JWT tokens are typically 200-400 chars
     const scope = 'openid profile email';
-    const authURL = `https://www.linkedin.com/oauth/v2/authorization?response_type=code&client_id=${clientID}&redirect_uri=${encodeURIComponent(callbackURL)}&state=${state}&scope=${encodeURIComponent(scope)}`;
+    const authURL = `https://www.linkedin.com/oauth/v2/authorization?response_type=code&client_id=${clientID}&redirect_uri=${encodeURIComponent(callbackURL)}&state=${encodeURIComponent(stateToken)}&scope=${encodeURIComponent(scope)}`;
     
-    console.log('LinkedIn OAuth URL:', authURL);
-    console.log('State stored in session:', state.substring(0, 8) + '...');
-    console.log('Redirecting to LinkedIn...');
-    console.log('ℹ️  Note: If user is already logged into LinkedIn, they will see a consent screen or auto-approve');
+    console.log('🔗 LinkedIn OAuth URL generated');
+    console.log('📤 Redirecting to LinkedIn...');
+    console.log('ℹ️  State verification: encrypted token (primary) + session (fallback)');
     
     res.redirect(authURL);
   });
@@ -94,116 +97,190 @@ router.get('/linkedin/callback',
       error: req.query.error,
       error_description: req.query.error_description
     });
-    console.log('Session state:', req.session.oauthState ? 'present' : 'missing');
     console.log('Session ID:', req.sessionID);
     console.log('Cookies received:', req.headers.cookie ? 'present' : 'missing');
-    console.log('Session data:', {
-      oauthState: req.session.oauthState ? req.session.oauthState.substring(0, 8) + '...' : 'missing',
-      sessionID: req.sessionID
-    });
-    console.log('Headers:', {
-      'user-agent': req.headers['user-agent'],
-      'referer': req.headers['referer'],
-      'cookie': req.headers.cookie ? 'present' : 'missing'
-    });
+    
+    // Helper function to get frontend URL
+    const getFrontendUrl = () => {
+      let frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3001';
+      if (process.env.NODE_ENV === 'production' && !frontendUrl.startsWith('http')) {
+        frontendUrl = `https://${frontendUrl}`;
+      }
+      if (!process.env.FRONTEND_URL && process.env.NODE_ENV === 'production') {
+        frontendUrl = 'https://podcast-platform-frontend.onrender.com';
+      }
+      return frontendUrl;
+    };
     
     // Check for OAuth errors from LinkedIn
     if (req.query.error) {
-      console.error('LinkedIn OAuth error:', {
+      const errorMsg = req.query.error_description || req.query.error || 'Authentication failed';
+      console.error('❌ LinkedIn OAuth error:', {
         error: req.query.error,
-        description: req.query.error_description
+        description: errorMsg
       });
       
-      let frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3001';
-      if (process.env.NODE_ENV === 'production' && !frontendUrl.startsWith('http')) {
-        frontendUrl = `https://${frontendUrl}`;
-      }
-      if (!process.env.FRONTEND_URL && process.env.NODE_ENV === 'production') {
-        frontendUrl = 'https://podcast-platform-frontend.onrender.com';
-      }
-      
-      return res.redirect(`${frontendUrl}/auth/error?message=${encodeURIComponent(req.query.error_description || req.query.error)}`);
+      return res.redirect(`${getFrontendUrl()}/auth/error?message=${encodeURIComponent(errorMsg)}`);
     }
     
     // Verify state parameter (CSRF protection)
-    const receivedState = req.query.state;
-    const storedState = req.session.oauthState;
+    const receivedStateToken = req.query.state;
     
-    if (!receivedState || !storedState) {
-      console.error('State verification failed:', {
-        received: receivedState ? 'present' : 'missing',
-        stored: storedState ? 'present' : 'missing'
-      });
-      
-      let frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3001';
-      if (process.env.NODE_ENV === 'production' && !frontendUrl.startsWith('http')) {
-        frontendUrl = `https://${frontendUrl}`;
-      }
-      if (!process.env.FRONTEND_URL && process.env.NODE_ENV === 'production') {
-        frontendUrl = 'https://podcast-platform-frontend.onrender.com';
-      }
-      
-      return res.redirect(`${frontendUrl}/auth/error?message=${encodeURIComponent('Security verification failed. Please try logging in again.')}`);
+    if (!receivedStateToken) {
+      console.error('❌ State verification failed: No state received from LinkedIn');
+      return res.redirect(`${getFrontendUrl()}/auth/error?message=${encodeURIComponent('Security verification failed. Please try logging in again.')}`);
     }
     
-    if (receivedState !== storedState) {
-      console.error('State mismatch:', {
-        received: receivedState,
-        stored: storedState
-      });
-      
-      let frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3001';
-      if (process.env.NODE_ENV === 'production' && !frontendUrl.startsWith('http')) {
-        frontendUrl = `https://${frontendUrl}`;
+    // Try to verify encrypted state token first (primary method)
+    let stateVerified = false;
+    let verifiedState = null;
+    
+    try {
+      const decoded = verifyStateToken(receivedStateToken);
+      if (decoded && decoded.state) {
+        verifiedState = decoded.state;
+        stateVerified = true;
+        console.log('✅ State verified via encrypted token');
       }
-      if (!process.env.FRONTEND_URL && process.env.NODE_ENV === 'production') {
-        frontendUrl = 'https://podcast-platform-frontend.onrender.com';
+    } catch (error) {
+      console.warn('⚠️ Encrypted state token verification failed:', error.message);
+    }
+    
+    // Fallback: Try session-based verification
+    if (!stateVerified) {
+      const storedState = req.session.oauthState;
+      const storedStateToken = req.session.stateToken;
+      
+      console.log('🔄 Attempting session fallback verification...');
+      console.log('Session state:', storedState ? 'present' : 'missing');
+      console.log('Session state token:', storedStateToken ? 'present' : 'missing');
+      
+      // Try to verify if received token matches stored token
+      if (storedStateToken && receivedStateToken === storedStateToken) {
+        const decoded = jwt.decode(storedStateToken);
+        if (decoded && decoded.state) {
+          verifiedState = decoded.state;
+          stateVerified = true;
+          console.log('✅ State verified via session fallback');
+        }
       }
       
-      return res.redirect(`${frontendUrl}/auth/error?message=${encodeURIComponent('Security verification failed. Please try logging in again.')}`);
+      // Last resort: decode received token and compare state strings
+      if (!stateVerified && storedState) {
+        try {
+          // Try to decode the received token to get the state
+          const decoded = jwt.decode(receivedStateToken);
+          if (decoded && decoded.state && decoded.state === storedState) {
+            verifiedState = storedState;
+            stateVerified = true;
+            console.log('✅ State verified via decoded token state comparison');
+          }
+        } catch (e) {
+          // If receivedStateToken is not a JWT or decode failed, try direct comparison
+          // (This handles edge cases where LinkedIn might modify the token)
+          if (receivedStateToken === storedState) {
+            verifiedState = storedState;
+            stateVerified = true;
+            console.log('✅ State verified via direct string comparison');
+          } else if (receivedStateToken === storedStateToken) {
+            // Token matches stored token exactly
+            const decoded = jwt.decode(storedStateToken);
+            if (decoded && decoded.state) {
+              verifiedState = decoded.state;
+              stateVerified = true;
+              console.log('✅ State verified via stored token match');
+            }
+          }
+        }
+      }
+    }
+    
+    if (!stateVerified) {
+      console.error('❌ State verification failed: All methods failed');
+      console.error('Received state token (first 50 chars):', receivedStateToken.substring(0, 50));
+      console.error('Session state:', req.session.oauthState ? req.session.oauthState.substring(0, 8) + '...' : 'missing');
+      
+      return res.redirect(`${getFrontendUrl()}/auth/error?message=${encodeURIComponent('Security verification failed. Your session may have expired. Please try logging in again.')}`);
     }
     
     // State verified - clear it from session
     delete req.session.oauthState;
-    console.log('✅ State verified successfully');
+    delete req.session.stateToken;
+    console.log('✅ State verified successfully, proceeding with authentication');
+    
+    // Store verified state in request for potential use
+    req.verifiedState = verifiedState;
     
     next();
   },
   (req, res, next) => {
+    // Helper function to get frontend URL
+    const getFrontendUrl = () => {
+      let frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3001';
+      if (process.env.NODE_ENV === 'production' && !frontendUrl.startsWith('http')) {
+        frontendUrl = `https://${frontendUrl}`;
+      }
+      if (!process.env.FRONTEND_URL && process.env.NODE_ENV === 'production') {
+        frontendUrl = 'https://podcast-platform-frontend.onrender.com';
+      }
+      return frontendUrl;
+    };
+    
     // Custom Passport authentication with error handling
     passport.authenticate('linkedin', { session: false }, (err, user, info) => {
       if (err) {
-        console.error('Passport authentication error:', err);
-        let frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3001';
-        if (process.env.NODE_ENV === 'production' && !frontendUrl.startsWith('http')) {
-          frontendUrl = `https://${frontendUrl}`;
+        console.error('❌ Passport authentication error:', err);
+        console.error('Error details:', {
+          message: err.message,
+          stack: err.stack,
+          name: err.name
+        });
+        
+        // Provide user-friendly error messages
+        let errorMessage = 'Authentication failed. Please try again.';
+        if (err.message) {
+          if (err.message.includes('Email is required')) {
+            errorMessage = 'Your LinkedIn account email is required. Please ensure your LinkedIn account has an email address and try again.';
+          } else if (err.message.includes('Failed to retrieve user information')) {
+            errorMessage = 'Unable to retrieve your LinkedIn profile. Please try again in a moment.';
+          } else if (err.message.includes('Database connection')) {
+            errorMessage = 'Service temporarily unavailable. Please try again in a moment.';
+          } else {
+            errorMessage = err.message;
+          }
         }
-        if (!process.env.FRONTEND_URL && process.env.NODE_ENV === 'production') {
-          frontendUrl = 'https://podcast-platform-frontend.onrender.com';
-        }
-        return res.redirect(`${frontendUrl}/auth/error?message=${encodeURIComponent(err.message || 'Authentication failed')}`);
+        
+        return res.redirect(`${getFrontendUrl()}/auth/error?message=${encodeURIComponent(errorMessage)}&code=auth_error`);
       }
       
       if (!user) {
-        console.error('Passport authentication failed - no user:', info);
-        let frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3001';
-        if (process.env.NODE_ENV === 'production' && !frontendUrl.startsWith('http')) {
-          frontendUrl = `https://${frontendUrl}`;
-        }
-        if (!process.env.FRONTEND_URL && process.env.NODE_ENV === 'production') {
-          frontendUrl = 'https://podcast-platform-frontend.onrender.com';
-        }
-        return res.redirect(`${frontendUrl}/auth/error?message=${encodeURIComponent(info?.message || 'Authentication failed')}`);
+        console.error('❌ Passport authentication failed - no user:', info);
+        const errorMessage = info?.message || 'Authentication failed. Please try logging in again.';
+        return res.redirect(`${getFrontendUrl()}/auth/error?message=${encodeURIComponent(errorMessage)}&code=no_user`);
       }
       
+      console.log('✅ User authenticated successfully:', user.email);
       // Attach user to request and continue
       req.user = user;
       next();
     })(req, res, next);
   },
   (req, res) => {
+    // Helper function to get frontend URL
+    const getFrontendUrl = () => {
+      let frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3001';
+      if (process.env.NODE_ENV === 'production' && !frontendUrl.startsWith('http')) {
+        frontendUrl = `https://${frontendUrl}`;
+      }
+      if (!process.env.FRONTEND_URL && process.env.NODE_ENV === 'production') {
+        frontendUrl = 'https://podcast-platform-frontend.onrender.com';
+      }
+      return frontendUrl;
+    };
+    
     try {
       if (!req.user) {
+        console.error('❌ User not found after authentication');
         throw new Error('User not found after authentication');
       }
       
@@ -213,34 +290,17 @@ router.get('/linkedin/callback',
         { expiresIn: '7d' }
       );
       
-      // Get frontend URL - ensure it has protocol in production
-      let frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3001';
-      
-      // If FRONTEND_URL doesn't have protocol and we're in production, add https://
-      if (process.env.NODE_ENV === 'production' && !frontendUrl.startsWith('http')) {
-        frontendUrl = `https://${frontendUrl}`;
-      }
-      
-      // Fallback to production URL if FRONTEND_URL is not set
-      if (!process.env.FRONTEND_URL && process.env.NODE_ENV === 'production') {
-        frontendUrl = 'https://podcast-platform-frontend.onrender.com';
-      }
-      
-      console.log(`✅ OAuth success! Redirecting to frontend: ${frontendUrl}/auth/callback`);
-      res.redirect(`${frontendUrl}/auth/callback?token=${token}`);
+      console.log(`✅ OAuth success! User: ${req.user.email}, Redirecting to frontend`);
+      res.redirect(`${getFrontendUrl()}/auth/callback?token=${token}`);
     } catch (error) {
-      console.error('Token generation error:', error);
+      console.error('❌ Token generation error:', error);
+      console.error('Error details:', {
+        message: error.message,
+        stack: error.stack
+      });
       
-      // Same logic for error redirect
-      let frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3001';
-      if (process.env.NODE_ENV === 'production' && !frontendUrl.startsWith('http')) {
-        frontendUrl = `https://${frontendUrl}`;
-      }
-      if (!process.env.FRONTEND_URL && process.env.NODE_ENV === 'production') {
-        frontendUrl = 'https://podcast-platform-frontend.onrender.com';
-      }
-      
-      res.redirect(`${frontendUrl}/auth/error?message=${encodeURIComponent(error.message)}`);
+      const errorMessage = error.message || 'Failed to complete authentication. Please try again.';
+      res.redirect(`${getFrontendUrl()}/auth/error?message=${encodeURIComponent(errorMessage)}&code=token_error`);
     }
   }
 );

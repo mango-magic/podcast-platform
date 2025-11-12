@@ -12,12 +12,25 @@ import {
   Card,
   CardContent,
   LinearProgress,
-  Grid
+  Grid,
+  Chip,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  Checkbox,
+  ListItemText,
+  Avatar,
+  ListItemAvatar,
+  ListItem,
+  List
 } from '@mui/material';
 import {
   Mic as MicIcon,
   Stop as StopIcon,
-  Cancel as CancelIcon
+  Cancel as CancelIcon,
+  PersonAdd as PersonAddIcon,
+  People as PeopleIcon
 } from '@mui/icons-material';
 import RecordRTC from 'recordrtc';
 import api from '../services/api';
@@ -40,13 +53,17 @@ function RecordPodcast() {
   const [formData, setFormData] = useState({
     podcastId: podcastIdParam || '',
     title: '',
-    description: ''
+    description: '',
+    guestIds: []
   });
+  const [guests, setGuests] = useState([]);
+  const [showGuestDialog, setShowGuestDialog] = useState(false);
   const videoRef = useRef(null);
   const [recordingTime, setRecordingTime] = useState(0);
 
   useEffect(() => {
     fetchPodcasts();
+    fetchGuests();
     
     let interval;
     if (recording) {
@@ -72,6 +89,15 @@ function RecordPodcast() {
       }
     } catch (error) {
       console.error('Error fetching podcasts:', error);
+    }
+  };
+
+  const fetchGuests = async () => {
+    try {
+      const response = await api.get('/api/guests');
+      setGuests(response.data);
+    } catch (error) {
+      console.error('Error fetching guests:', error);
     }
   };
 
@@ -149,6 +175,15 @@ function RecordPodcast() {
         };
         
         const episodeResponse = await api.post('/api/episodes', episodeData);
+        
+        // Add guests to episode if any were selected
+        if (formData.guestIds && formData.guestIds.length > 0) {
+          await Promise.all(
+            formData.guestIds.map(guestId =>
+              api.post(`/api/episodes/${episodeResponse.data.id}/guests`, { guestId })
+            )
+          );
+        }
         
         showToast('Episode recorded and saved successfully!', 'success');
         
@@ -333,7 +368,49 @@ function RecordPodcast() {
                   rows={4}
                   disabled={recording || uploading}
                   placeholder="Enter episode description..."
+                  sx={{ mb: 2 }}
                 />
+
+                <Box sx={{ mb: 2 }}>
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
+                    <Typography variant="body2" fontWeight="medium">
+                      Guests
+                    </Typography>
+                    <Button
+                      size="small"
+                      startIcon={<PersonAddIcon />}
+                      onClick={() => setShowGuestDialog(true)}
+                      disabled={recording || uploading}
+                    >
+                      {formData.guestIds.length > 0 ? 'Change' : 'Add Guests'}
+                    </Button>
+                  </Box>
+                  {formData.guestIds.length > 0 ? (
+                    <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+                      {formData.guestIds.map(guestId => {
+                        const guest = guests.find(g => g.id === guestId);
+                        return guest ? (
+                          <Chip
+                            key={guestId}
+                            label={guest.name}
+                            avatar={<Avatar src={guest.profilePictureUrl}>{guest.name[0]}</Avatar>}
+                            onDelete={() => {
+                              setFormData(prev => ({
+                                ...prev,
+                                guestIds: prev.guestIds.filter(id => id !== guestId)
+                              }));
+                            }}
+                            disabled={recording || uploading}
+                          />
+                        ) : null;
+                      })}
+                    </Box>
+                  ) : (
+                    <Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic' }}>
+                      No guests added. Click "Add Guests" to invite people to this recording.
+                    </Typography>
+                  )}
+                </Box>
 
                 {podcasts.length === 0 && (
                   <Alert severity="info" sx={{ mt: 2 }}>
@@ -345,6 +422,89 @@ function RecordPodcast() {
           </Grid>
         </Grid>
       </Box>
+
+      {/* Guest Selection Dialog */}
+      <Dialog open={showGuestDialog} onClose={() => setShowGuestDialog(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <PeopleIcon />
+            <Typography variant="h6">Select Guests</Typography>
+          </Box>
+        </DialogTitle>
+        <DialogContent>
+          {guests.length === 0 ? (
+            <Box sx={{ textAlign: 'center', py: 4 }}>
+              <PeopleIcon sx={{ fontSize: 48, color: 'text.secondary', mb: 2 }} />
+              <Typography variant="body1" gutterBottom>
+                No guests yet
+              </Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                Add guests to your guest list first
+              </Typography>
+              <Button
+                variant="contained"
+                onClick={() => {
+                  setShowGuestDialog(false);
+                  navigate('/guests');
+                }}
+              >
+                Go to Guests
+              </Button>
+            </Box>
+          ) : (
+            <FormControl fullWidth>
+              <InputLabel>Select Guests</InputLabel>
+              <Select
+                multiple
+                value={formData.guestIds}
+                onChange={(e) => setFormData({ ...formData, guestIds: e.target.value })}
+                renderValue={(selected) => (
+                  <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                    {selected.map((guestId) => {
+                      const guest = guests.find(g => g.id === guestId);
+                      return guest ? (
+                        <Chip
+                          key={guestId}
+                          label={guest.name}
+                          size="small"
+                          avatar={<Avatar src={guest.profilePictureUrl}>{guest.name[0]}</Avatar>}
+                        />
+                      ) : null;
+                    })}
+                  </Box>
+                )}
+              >
+                {guests.map((guest) => (
+                  <MenuItem key={guest.id} value={guest.id}>
+                    <Checkbox checked={formData.guestIds.indexOf(guest.id) > -1} />
+                    <ListItemAvatar>
+                      <Avatar src={guest.profilePictureUrl}>{guest.name[0]}</Avatar>
+                    </ListItemAvatar>
+                    <ListItemText
+                      primary={guest.name}
+                      secondary={guest.title ? `${guest.title}${guest.company ? ` at ${guest.company}` : ''}` : guest.email}
+                    />
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setShowGuestDialog(false)}>Cancel</Button>
+          <Button
+            onClick={() => {
+              setShowGuestDialog(false);
+              if (guests.length === 0) {
+                navigate('/guests');
+              }
+            }}
+            variant="contained"
+          >
+            {guests.length === 0 ? 'Add Guests' : 'Done'}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Layout>
   );
 }

@@ -22,14 +22,20 @@ import {
   DialogActions,
   IconButton,
   Grid,
-  Divider
+  Divider,
+  TextField
 } from '@mui/material';
 import {
   Edit as EditIcon,
   Delete as DeleteIcon,
   ArrowBack as ArrowBackIcon,
   PlayArrow as PlayIcon,
-  Download as DownloadIcon
+  Download as DownloadIcon,
+  Share as ShareIcon,
+  ContentCopy as ContentCopyIcon,
+  LinkedIn as LinkedInIcon,
+  Twitter as TwitterIcon,
+  YouTube as YouTubeIcon
 } from '@mui/icons-material';
 import api from '../services/api';
 import { useToast } from '../contexts/ToastContext';
@@ -44,6 +50,8 @@ function EpisodeDetail() {
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [shareDialogOpen, setShareDialogOpen] = useState(false);
+  const [shareLink, setShareLink] = useState('');
   const [formData, setFormData] = useState({
     title: '',
     description: '',
@@ -52,6 +60,9 @@ function EpisodeDetail() {
 
   useEffect(() => {
     fetchEpisode();
+    // Generate shareable link
+    const baseUrl = window.location.origin;
+    setShareLink(`${baseUrl}/episodes/${id}`);
   }, [id]);
 
   const fetchEpisode = async () => {
@@ -95,6 +106,48 @@ function EpisodeDetail() {
     } catch (error) {
       console.error('Error deleting episode:', error);
       showToast('Failed to delete episode', 'error');
+    }
+  };
+
+  const handleCopyLink = () => {
+    navigator.clipboard.writeText(shareLink);
+    showToast('Link copied to clipboard!', 'success');
+  };
+
+  const handleShare = (platform) => {
+    const text = encodeURIComponent(episode?.title || 'Check out this podcast episode');
+    const url = encodeURIComponent(shareLink);
+    
+    let shareUrl = '';
+    switch (platform) {
+      case 'linkedin':
+        shareUrl = `https://www.linkedin.com/sharing/share-offsite/?url=${url}`;
+        break;
+      case 'twitter':
+        shareUrl = `https://twitter.com/intent/tweet?text=${text}&url=${url}`;
+        break;
+      case 'youtube':
+        // YouTube doesn't have a direct share URL, just copy link
+        handleCopyLink();
+        return;
+      default:
+        return;
+    }
+    
+    window.open(shareUrl, '_blank', 'width=600,height=400');
+  };
+
+  const handleDistribute = async (platform) => {
+    try {
+      await api.post('/api/distributions', {
+        episodeId: id,
+        platform
+      });
+      showToast(`Distributed to ${platform}!`, 'success');
+      setShareDialogOpen(false);
+    } catch (error) {
+      console.error('Error distributing:', error);
+      showToast('Failed to distribute episode', 'error');
     }
   };
 
@@ -322,6 +375,16 @@ function EpisodeDetail() {
                   >
                     Create Clip
                   </Button>
+                  <Divider sx={{ my: 1 }} />
+                  <Button
+                    fullWidth
+                    variant="contained"
+                    color="primary"
+                    startIcon={<ShareIcon />}
+                    onClick={() => setShareDialogOpen(true)}
+                  >
+                    Share Episode
+                  </Button>
                 </Box>
               </CardContent>
             </Card>
@@ -364,6 +427,107 @@ function EpisodeDetail() {
           <Button onClick={handleDelete} color="error" variant="contained">
             Delete
           </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Share Dialog */}
+      <Dialog open={shareDialogOpen} onClose={() => setShareDialogOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Share Episode</DialogTitle>
+        <DialogContent>
+          <Box sx={{ mb: 3 }}>
+            <Typography variant="body2" color="text.secondary" gutterBottom>
+              Shareable Link
+            </Typography>
+            <Box sx={{ display: 'flex', gap: 1 }}>
+              <TextField
+                fullWidth
+                value={shareLink}
+                InputProps={{ readOnly: true }}
+                size="small"
+              />
+              <Button
+                variant="outlined"
+                startIcon={<ContentCopyIcon />}
+                onClick={handleCopyLink}
+              >
+                Copy
+              </Button>
+            </Box>
+          </Box>
+
+          <Divider sx={{ my: 2 }} />
+
+          <Typography variant="body2" color="text.secondary" gutterBottom sx={{ mb: 2 }}>
+            Share on Social Media
+          </Typography>
+          <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', mb: 3 }}>
+            <Button
+              variant="outlined"
+              startIcon={<LinkedInIcon />}
+              onClick={() => handleShare('linkedin')}
+              sx={{ flex: 1, minWidth: '120px' }}
+            >
+              LinkedIn
+            </Button>
+            <Button
+              variant="outlined"
+              startIcon={<TwitterIcon />}
+              onClick={() => handleShare('twitter')}
+              sx={{ flex: 1, minWidth: '120px' }}
+            >
+              Twitter/X
+            </Button>
+            <Button
+              variant="outlined"
+              startIcon={<ContentCopyIcon />}
+              onClick={handleCopyLink}
+              sx={{ flex: 1, minWidth: '120px' }}
+            >
+              Copy Link
+            </Button>
+          </Box>
+
+          <Divider sx={{ my: 2 }} />
+
+          <Typography variant="body2" color="text.secondary" gutterBottom sx={{ mb: 2 }}>
+            Distribute to Platform
+          </Typography>
+          <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+            <Button
+              variant="outlined"
+              size="small"
+              onClick={() => handleDistribute('linkedin')}
+            >
+              LinkedIn
+            </Button>
+            <Button
+              variant="outlined"
+              size="small"
+              onClick={() => handleDistribute('twitter')}
+            >
+              Twitter/X
+            </Button>
+            <Button
+              variant="outlined"
+              size="small"
+              onClick={() => handleDistribute('youtube')}
+            >
+              YouTube
+            </Button>
+            <Button
+              variant="outlined"
+              size="small"
+              onClick={() => {
+                setShareDialogOpen(false);
+                navigate('/distributions');
+              }}
+            >
+              More Options
+            </Button>
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setShareDialogOpen(false)}>Close</Button>
         </DialogActions>
       </Dialog>
     </Layout>
